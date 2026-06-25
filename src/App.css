@@ -1,0 +1,197 @@
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.header {
+  text-align: center;
+  padding: 20px 0 16px;
+}
+
+.header h1 {
+  font-size: 1.6rem;
+  color: #2c3e50;
+}
+
+/* タブナビ */
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 20px;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  color: #888;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+  border-radius: 6px 6px 0 0;
+}
+
+.tab-btn:hover {
+  color: #3498db;
+  background: #f5f9fd;
+}
+
+.tab-btn.active {
+  color: #3498db;
+  border-bottom-color: #3498db;
+  font-weight: 600;
+}
+
+.main-content {
+  width: 100%;
+}
+
+/* 手動入力タブ用 */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.summary-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 0.82rem;
+  color: #888;
+}
+
+.amount {
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+.positive { color: #27ae60; }
+.negative { color: #e74c3c; }
+
+.form {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+
+.form h2 {
+  margin-bottom: 14px;
+  font-size: 1rem;
+  color: #2c3e50;
+}
+
+.form-group {
+  margin-bottom: 10px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.82rem;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: #3498db;
+}
+
+.form button[type='submit'] {
+  width: 100%;
+  padding: 11px;
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background 0.2s;
+}
+
+.form button[type='submit']:hover {
+  background: #2980b9;
+}
+
+.transactions {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+}
+
+.transactions h2 {
+  margin-bottom: 14px;
+  font-size: 1rem;
+  color: #2c3e50;
+}
+
+.empty {
+  color: #bbb;
+  text-align: center;
+  padding: 20px 0;
+  font-size: 0.9rem;
+}
+
+.transactions ul {
+  list-style: none;
+}
+
+.transaction-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.transaction-item:last-child {
+  border-bottom: none;
+}
+
+.transaction-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.transaction-desc {
+  font-size: 0.92rem;
+}
+
+.transaction-date {
+  font-size: 0.75rem;
+  color: #aaa;
+}
+
+.transaction-amount {
+  font-weight: bold;
+  font-size: 0.92rem;
+}

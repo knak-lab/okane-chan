@@ -1,0 +1,204 @@
+.paypay-import {
+  width: 100%;
+}
+
+/* ドロップゾーン */
+.drop-zone {
+  border: 2px dashed #bbb;
+  border-radius: 16px;
+  padding: 60px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fafafa;
+}
+
+.drop-zone:hover,
+.drop-zone.dragging {
+  border-color: #3498db;
+  background: #eaf4fc;
+}
+
+.drop-zone-icon {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.drop-zone-text {
+  font-size: 1rem;
+  color: #555;
+  margin-bottom: 6px;
+}
+
+.drop-zone-sub {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.error-msg {
+  margin-top: 16px;
+  color: #e74c3c;
+  font-size: 0.85rem;
+}
+
+/* インポート後ヘッダー */
+.import-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.import-header-left {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.import-count {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.import-total {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.clear-btn {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-btn:hover {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+/* カテゴリ集計 */
+.summary-section {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.summary-section h3 {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 12px;
+}
+
+.summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.summary-chip {
+  border-left: 3px solid #ccc;
+  background: #f8f8f8;
+  border-radius: 0 8px 8px 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+}
+
+.summary-chip-name {
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.summary-chip-amount {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+/* テーブル */
+.table-wrapper {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  overflow-x: auto;
+}
+
+.transactions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.transactions-table thead tr {
+  background: #f0f4f8;
+}
+
+.transactions-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 600;
+  color: #555;
+  border-bottom: 1px solid #e8e8e8;
+  white-space: nowrap;
+}
+
+.transactions-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: middle;
+}
+
+.transactions-table tr:last-child td {
+  border-bottom: none;
+}
+
+.transactions-table tr:hover td {
+  background: #fafbfc;
+}
+
+.col-date {
+  white-space: nowrap;
+  color: #888;
+  font-size: 0.8rem;
+  width: 100px;
+}
+
+.col-desc {
+  color: #333;
+}
+
+.col-amount {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+  width: 100px;
+}
+
+.col-category select {
+  border: none;
+  border-left: 3px solid #ccc;
+  background: #f8f8f8;
+  border-radius: 0 6px 6px 0;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  color: #333;
+  cursor: pointer;
+  outline: none;
+  width: 160px;
+  transition: border-color 0.2s;
+}
+
+.col-category select:focus {
+  background: #eef4fb;
+}
