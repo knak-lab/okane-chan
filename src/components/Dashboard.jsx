@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
   PieChart, Pie,
 } from 'recharts'
 import { BUCKET_CONFIG, TOTAL_BUDGET } from '../config/budget'
+import { gasApi, isGasReady } from '../utils/gasApi'
 import './Dashboard.css'
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
@@ -45,7 +46,38 @@ function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, pct }) {
   )
 }
 
-export default function Dashboard({ transactions }) {
+export default function Dashboard({ transactions, onLoad }) {
+  const [months, setMonths]           = useState([])
+  const [selectedMonth, setSelected]  = useState('')
+  const [loadStatus, setLoadStatus]   = useState('idle') // idle | loading | done | error
+  const [loadMsg, setLoadMsg]         = useState('')
+
+  // GAS接続時に月一覧を取得
+  useEffect(() => {
+    if (!isGasReady()) return
+    gasApi.getMonths()
+      .then(r => {
+        setMonths(r.months || [])
+        if (r.months?.length > 0 && !selectedMonth) setSelected(r.months[0])
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleLoad = async () => {
+    if (!selectedMonth) return
+    setLoadStatus('loading')
+    setLoadMsg('')
+    try {
+      const result = await gasApi.getTransactions(selectedMonth)
+      onLoad(result.transactions || [])
+      setLoadStatus('done')
+      setLoadMsg(`${result.transactions?.length ?? 0}件を読み込みました`)
+    } catch (e) {
+      setLoadStatus('error')
+      setLoadMsg(e.message)
+    }
+  }
+
   const bucketData = useMemo(() => {
     return BUCKET_CONFIG.map((b) => {
       const actual = transactions
@@ -75,6 +107,34 @@ export default function Dashboard({ transactions }) {
 
   return (
     <div className="dashboard">
+
+      {/* シートローダー */}
+      {isGasReady() && (
+        <div className="sheet-loader">
+          <span className="sheet-loader-label">スプレッドシートから読み込む</span>
+          <select
+            className="month-select"
+            value={selectedMonth}
+            onChange={e => { setSelected(e.target.value); setLoadStatus('idle'); setLoadMsg('') }}
+            disabled={months.length === 0}
+          >
+            {months.length === 0
+              ? <option value="">データなし</option>
+              : months.map(m => <option key={m} value={m}>{m}</option>)
+            }
+          </select>
+          <button
+            className={`load-btn load-btn--${loadStatus}`}
+            onClick={handleLoad}
+            disabled={!selectedMonth || loadStatus === 'loading'}
+          >
+            {loadStatus === 'loading' ? '読込中…' : '読み込む'}
+          </button>
+          {loadMsg && (
+            <span className={`load-msg load-msg--${loadStatus}`}>{loadMsg}</span>
+          )}
+        </div>
+      )}
 
       {/* KPI */}
       <div className="kpi-grid">

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { parsePayPayCSV } from '../utils/parsePayPay'
 import { categorize, ALL_CATEGORIES } from '../utils/categorize'
+import { gasApi, isGasReady } from '../utils/gasApi'
 import './PayPayImport.css'
 
 const CAT_COLOR = {
@@ -15,8 +16,10 @@ function getCategoryColor(cat) {
 }
 
 export default function PayPayImport({ transactions, onLoad }) {
-  const [isDragging, setIsDragging] = useState(false)
-  const [error, setError] = useState('')
+  const [isDragging, setIsDragging]   = useState(false)
+  const [error, setError]             = useState('')
+  const [saveStatus, setSaveStatus]   = useState('idle') // idle | saving | saved | error
+  const [saveMsg, setSaveMsg]         = useState('')
   const fileInputRef = useRef(null)
 
   const processFile = useCallback((file) => {
@@ -25,7 +28,7 @@ export default function PayPayImport({ transactions, onLoad }) {
       return
     }
     setError('')
-
+    setSaveStatus('idle')
     const reader = new FileReader()
     reader.onload = (e) => {
       try {
@@ -43,7 +46,6 @@ export default function PayPayImport({ transactions, onLoad }) {
   }, [onLoad])
 
   const handleFileChange = (e) => processFile(e.target.files[0])
-
   const handleDrop = (e) => {
     e.preventDefault()
     setIsDragging(false)
@@ -52,12 +54,27 @@ export default function PayPayImport({ transactions, onLoad }) {
 
   const handleCategoryChange = (id, newCategory) => {
     onLoad(transactions.map((r) => (r.id === id ? { ...r, category: newCategory } : r)))
+    setSaveStatus('idle')
   }
 
   const handleClear = () => {
     onLoad([])
     setError('')
+    setSaveStatus('idle')
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleSave = async () => {
+    setSaveStatus('saving')
+    setSaveMsg('')
+    try {
+      const result = await gasApi.saveTransactions(transactions)
+      setSaveStatus('saved')
+      setSaveMsg(`${result.saved}件を保存しました（${(result.months || []).join(', ')}）`)
+    } catch (e) {
+      setSaveStatus('error')
+      setSaveMsg(e.message)
+    }
   }
 
   const summary = ALL_CATEGORIES.map((cat) => ({
@@ -90,8 +107,26 @@ export default function PayPayImport({ transactions, onLoad }) {
               <span className="import-count">{transactions.length}件を読み込みました</span>
               <span className="import-total">合計: ¥{grandTotal.toLocaleString()}</span>
             </div>
-            <button className="clear-btn" onClick={handleClear}>クリア</button>
+            <div className="import-actions">
+              {isGasReady() && (
+                <button
+                  className={`save-btn save-btn--${saveStatus}`}
+                  onClick={handleSave}
+                  disabled={saveStatus === 'saving'}
+                >
+                  {saveStatus === 'saving' ? '保存中…'
+                    : saveStatus === 'saved' ? '✓ 保存済み'
+                    : 'スプレッドシートに保存'}
+                </button>
+              )}
+              <button className="clear-btn" onClick={handleClear}>クリア</button>
+            </div>
           </div>
+
+          {/* 保存ステータスメッセージ */}
+          {saveMsg && (
+            <div className={`save-msg save-msg--${saveStatus}`}>{saveMsg}</div>
+          )}
 
           <div className="summary-section">
             <h3>カテゴリ別集計</h3>

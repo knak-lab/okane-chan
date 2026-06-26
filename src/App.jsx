@@ -36,7 +36,7 @@ export default function App() {
 
       <main className="main-content">
         {activeTab === 'dashboard' && (
-          <Dashboard transactions={transactions} />
+          <Dashboard transactions={transactions} onLoad={setTransactions} />
         )}
         {activeTab === 'paypay' && (
           <PayPayImport transactions={transactions} onLoad={setTransactions} />

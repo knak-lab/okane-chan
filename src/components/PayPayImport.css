@@ -66,6 +66,48 @@
   color: #e6edf3;
 }
 
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.save-btn {
+  background: #238636;
+  border: 1px solid #2ea043;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.save-btn:hover:not(:disabled) { background: #2ea043; }
+.save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.save-btn--saved { background: #1a7f37; border-color: #1a7f37; }
+.save-btn--error { background: #6e1a1a; border-color: #f85149; }
+
+.save-msg {
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.save-msg--saved {
+  background: rgba(63,185,80,0.1);
+  color: #3fb950;
+  border: 1px solid rgba(63,185,80,0.3);
+}
+
+.save-msg--error {
+  background: rgba(248,81,73,0.1);
+  color: #f85149;
+  border: 1px solid rgba(248,81,73,0.3);
+}
+
 .clear-btn {
   background: none;
   border: 1px solid #30363d;
