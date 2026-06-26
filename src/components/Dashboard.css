@@ -1,0 +1,291 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* KPI */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.kpi-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.2s;
+}
+
+.kpi-card:hover {
+  border-color: #484f58;
+}
+
+.kpi-card.kpi-danger {
+  border-color: #6e2c2c;
+  background: #1a1014;
+}
+
+.kpi-label {
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.kpi-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: #e6edf3;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-unit {
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #8b949e;
+}
+
+.kpi-danger .kpi-value {
+  color: #f85149;
+}
+
+.kpi-sub {
+  font-size: 0.75rem;
+  color: #6e7681;
+}
+
+/* Charts row */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Chart card */
+.chart-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.chart-title {
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-bottom: 14px;
+}
+
+.no-data {
+  height: 210px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #484f58;
+  font-size: 0.85rem;
+}
+
+/* Tooltip */
+.chart-tip {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.83rem;
+  color: #c9d1d9;
+  line-height: 1.6;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.chart-tip-label {
+  color: #6e7681;
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+/* Budget table */
+.budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.budget-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: #6e7681;
+  border-bottom: 1px solid #21262d;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.budget-table th.r,
+.budget-table td.r {
+  text-align: right;
+}
+
+.budget-table td {
+  padding: 11px 10px;
+  color: #c9d1d9;
+  border-bottom: 1px solid #161b22;
+  vertical-align: middle;
+}
+
+.budget-table tbody tr:hover td {
+  background: rgba(255,255,255,0.025);
+}
+
+.budget-table tfoot td {
+  border-top: 1px solid #30363d;
+  border-bottom: none;
+  padding-top: 13px;
+  color: #e6edf3;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.bucket-name {
+  font-size: 0.85rem;
+  color: #e6edf3;
+}
+
+.cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cat-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  color: #8b949e;
+  background: #21262d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.83rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-ok { color: #3fb950; }
+.text-danger { color: #f85149; }
+
+/* Progress bar */
+.progress-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.progress-track {
+  flex: 1;
+  min-width: 60px;
+  height: 4px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.progress-pct {
+  font-size: 0.75rem;
+  color: #6e7681;
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: right;
+}
+
+/* ── モバイル（375px〜640px） ── */
+@media (max-width: 640px) {
+  .dashboard {
+    gap: 10px;
+  }
+
+  /* KPI: 1枚目フル幅、2・3枚目2列 */
+  .kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .kpi-card:first-child {
+    grid-column: span 2;
+  }
+
+  .kpi-value {
+    font-size: 1.35rem;
+  }
+
+  .kpi-card {
+    padding: 14px 16px;
+  }
+
+  /* グラフ: 縦並び */
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-card {
+    padding: 14px 12px;
+  }
+
+  /* カテゴリ列を非表示 */
+  .budget-table .col-cats,
+  .budget-table .col-cats-head {
+    display: none;
+  }
+
+  .budget-table th,
+  .budget-table td {
+    padding: 9px 7px;
+    font-size: 0.78rem;
+  }
+
+  .budget-table .mono {
+    font-size: 0.78rem;
+  }
+
+  .bucket-name {
+    font-size: 0.8rem;
+  }
+
+  .progress-track {
+    min-width: 36px;
+  }
+
+  /* 予算・残り列を非表示（実績・達成率のみ残す） */
+  .budget-table .col-budget,
+  .budget-table .col-budget-head,
+  .budget-table .col-remaining,
+  .budget-table .col-remaining-head {
+    display: none;
+  }
+}

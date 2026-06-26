@@ -4,41 +4,41 @@
 
 /* ドロップゾーン */
 .drop-zone {
-  border: 2px dashed #bbb;
+  border: 2px dashed #30363d;
   border-radius: 16px;
   padding: 60px 24px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
-  background: #fafafa;
+  background: #161b22;
 }
 
 .drop-zone:hover,
 .drop-zone.dragging {
-  border-color: #3498db;
-  background: #eaf4fc;
+  border-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.05);
 }
 
 .drop-zone-icon {
-  font-size: 3rem;
-  margin-bottom: 12px;
+  font-size: 2.8rem;
+  margin-bottom: 14px;
 }
 
 .drop-zone-text {
-  font-size: 1rem;
-  color: #555;
+  font-size: 0.95rem;
+  color: #c9d1d9;
   margin-bottom: 6px;
 }
 
 .drop-zone-sub {
-  font-size: 0.85rem;
-  color: #aaa;
+  font-size: 0.82rem;
+  color: #484f58;
 }
 
 .error-msg {
   margin-top: 16px;
-  color: #e74c3c;
-  font-size: 0.85rem;
+  color: #f85149;
+  font-size: 0.82rem;
 }
 
 /* インポート後ヘッダー */
@@ -46,7 +46,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .import-header-left {
@@ -56,44 +56,47 @@
 }
 
 .import-count {
-  font-size: 0.9rem;
-  color: #666;
+  font-size: 0.85rem;
+  color: #8b949e;
 }
 
 .import-total {
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: #2c3e50;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #e6edf3;
 }
 
 .clear-btn {
   background: none;
-  border: 1px solid #ddd;
+  border: 1px solid #30363d;
   border-radius: 8px;
-  padding: 6px 14px;
-  font-size: 0.85rem;
-  color: #888;
+  padding: 5px 13px;
+  font-size: 0.82rem;
+  color: #8b949e;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .clear-btn:hover {
-  border-color: #e74c3c;
-  color: #e74c3c;
+  border-color: #f85149;
+  color: #f85149;
 }
 
 /* カテゴリ集計 */
 .summary-section {
-  background: white;
+  background: #161b22;
+  border: 1px solid #30363d;
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: 14px;
 }
 
 .summary-section h3 {
-  font-size: 0.9rem;
-  color: #666;
+  font-size: 0.72rem;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
   margin-bottom: 12px;
 }
 
@@ -104,32 +107,33 @@
 }
 
 .summary-chip {
-  border-left: 3px solid #ccc;
-  background: #f8f8f8;
+  border-left: 3px solid #30363d;
+  background: #21262d;
   border-radius: 0 8px 8px 0;
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 130px;
+  gap: 3px;
+  min-width: 120px;
 }
 
 .summary-chip-name {
-  font-size: 0.78rem;
-  color: #666;
+  font-size: 0.72rem;
+  color: #8b949e;
 }
 
 .summary-chip-amount {
-  font-size: 1rem;
-  font-weight: bold;
-  color: #2c3e50;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #e6edf3;
+  font-variant-numeric: tabular-nums;
 }
 
 /* テーブル */
 .table-wrapper {
-  background: white;
+  background: #161b22;
+  border: 1px solid #30363d;
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   overflow: hidden;
   overflow-x: auto;
 }
@@ -137,26 +141,30 @@
 .transactions-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
 }
 
 .transactions-table thead tr {
-  background: #f0f4f8;
+  background: #21262d;
 }
 
 .transactions-table th {
   text-align: left;
   padding: 10px 12px;
   font-weight: 600;
-  color: #555;
-  border-bottom: 1px solid #e8e8e8;
+  color: #8b949e;
+  border-bottom: 1px solid #30363d;
   white-space: nowrap;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .transactions-table td {
   padding: 9px 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #21262d;
   vertical-align: middle;
+  color: #c9d1d9;
 }
 
 .transactions-table tr:last-child td {
@@ -164,18 +172,19 @@
 }
 
 .transactions-table tr:hover td {
-  background: #fafbfc;
+  background: rgba(255,255,255,0.025);
 }
 
 .col-date {
   white-space: nowrap;
-  color: #888;
-  font-size: 0.8rem;
+  color: #6e7681;
+  font-size: 0.78rem;
   width: 100px;
+  font-variant-numeric: tabular-nums;
 }
 
 .col-desc {
-  color: #333;
+  color: #c9d1d9;
 }
 
 .col-amount {
@@ -183,22 +192,60 @@
   font-weight: 600;
   white-space: nowrap;
   width: 100px;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.83rem;
 }
 
 .col-category select {
   border: none;
-  border-left: 3px solid #ccc;
-  background: #f8f8f8;
+  border-left: 3px solid #484f58;
+  background: #21262d;
   border-radius: 0 6px 6px 0;
   padding: 4px 8px;
-  font-size: 0.82rem;
-  color: #333;
+  font-size: 0.8rem;
+  color: #c9d1d9;
   cursor: pointer;
   outline: none;
-  width: 160px;
-  transition: border-color 0.2s;
+  width: 168px;
+  transition: background 0.15s;
 }
 
 .col-category select:focus {
-  background: #eef4fb;
+  background: #2d333b;
+}
+
+@media (max-width: 640px) {
+  .drop-zone {
+    padding: 40px 16px;
+  }
+
+  .import-header-left {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .summary-chip {
+    min-width: 100px;
+  }
+
+  /* 日付列を非表示 */
+  .col-date,
+  .transactions-table th:first-child {
+    display: none;
+  }
+
+  .col-amount {
+    width: 74px;
+  }
+
+  .col-category select {
+    width: 130px;
+  }
+
+  .transactions-table th,
+  .transactions-table td {
+    padding: 8px 8px;
+    font-size: 0.8rem;
+  }
 }
