@@ -1,0 +1,261 @@
+.acc-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 560px;
+}
+
+/* ── Card ── */
+.acc-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.acc-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.acc-card-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+}
+
+.acc-month {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748B;
+  background: #F1F5F9;
+  border-radius: 5px;
+  padding: 2px 8px;
+}
+
+.acc-month-select {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748B;
+  background: #F1F5F9;
+  border: none;
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  outline: none;
+  appearance: auto;
+}
+
+.acc-month-select:hover {
+  background: #E2E8F0;
+}
+
+.acc-loading {
+  font-size: 0.75rem;
+  color: #94A3B8;
+}
+
+/* ── Table ── */
+.acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.acc-table th {
+  padding: 7px 10px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #F1F5F9;
+}
+
+.acc-th-name { text-align: left; }
+.acc-th-r    { text-align: right; }
+.acc-th-bar  { text-align: left; width: 140px; }
+
+.acc-row:hover td { background: rgba(244,121,32,0.03); }
+
+.acc-table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+.acc-table tr:last-child td { border-bottom: none; }
+
+.acc-td-name {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-weight: 500;
+  color: #1A1F36;
+  white-space: nowrap;
+}
+
+.acc-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 9px;
+  flex-shrink: 0;
+}
+
+.acc-td-r {
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.acc-pos { color: #059669; }
+.acc-neg { color: #DC2626; }
+
+.acc-td-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.acc-track {
+  flex: 1;
+  min-width: 60px;
+  height: 5px;
+  background: #F1F5F9;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.acc-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.acc-pct {
+  font-size: 0.72rem;
+  color: #94A3B8;
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: right;
+}
+
+/* ── 中計行 ── */
+.acc-mid-row td {
+  border-bottom: 1px dashed #E2E8F0;
+  background: #F8FAFC;
+  padding: 9px 10px;
+}
+
+.acc-mid-label {
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  color: #64748B !important;
+}
+
+.acc-pool-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #059669;
+  background: #ECFDF5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.acc-common-total {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #059669;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 月間／年間タグ */
+.acc-period-tag {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.acc-period-tag--monthly {
+  color: #0EA5E9;
+  background: #EFF6FF;
+}
+
+.acc-period-tag--annual {
+  color: #7C3AED;
+  background: #F5F3FF;
+}
+
+/* ── へそくり ── */
+.acc-card--hesokin {
+  border-color: #D1FAE5;
+  background: linear-gradient(135deg, #F0FDF4 0%, #fff 100%);
+}
+
+.acc-hesokin-period {
+  font-size: 0.72rem;
+  color: #059669;
+  background: #D1FAE5;
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-weight: 600;
+}
+
+.acc-hesokin-body {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.acc-hesokin-amount {
+  font-size: 1.8rem;
+  font-weight: 800;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.acc-hesokin-label {
+  font-size: 0.75rem;
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+/* ── セクションラベル ── */
+.acc-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94A3B8;
+  padding: 0 2px;
+}
+
+.acc-common-type {
+  font-size: 0.68rem;
+  color: #94A3B8;
+  background: #F1F5F9;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-right: 8px;
+  white-space: nowrap;
+}

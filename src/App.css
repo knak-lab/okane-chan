@@ -1,7 +1,20 @@
 .app {
-  max-width: 900px;
+  max-width: 940px;
   margin: 0 auto;
-  padding: 16px 20px 40px;
+  padding: 0 20px 48px;
+}
+
+/* ページ最上部のオレンジ×ネイビー帯 */
+body::before {
+  content: '';
+  display: block;
+  height: 4px;
+  background: linear-gradient(90deg, #F47920 0%, #F47920 60%, #003087 100%);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
 }
 
 .header {
@@ -9,84 +22,117 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 24px 0 18px;
+  padding: 32px 0 20px;
 }
 
 .header-icon {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
 }
 
 .header h1 {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #e6edf3;
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #003087;
   letter-spacing: -0.02em;
 }
 
-/* タブ */
+/* タブ（1段・横スクロール） */
 .tab-nav {
   display: flex;
+  flex-direction: row;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  margin-bottom: 22px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   gap: 2px;
-  border-bottom: 1px solid #21262d;
-  margin-bottom: 20px;
+  padding: 5px 6px;
+}
+
+.tab-nav::-webkit-scrollbar { display: none; }
+
+.tab-sep {
+  flex-shrink: 0;
+  color: #CBD5E1;
+  font-size: 0.78rem;
+  padding: 0 2px;
+  pointer-events: none;
+  user-select: none;
+  align-self: center;
 }
 
 .tab-btn {
   position: relative;
+  flex-shrink: 0;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  padding: 9px 18px;
-  font-size: 0.88rem;
-  color: #8b949e;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748B;
   cursor: pointer;
-  border-radius: 6px 6px 0 0;
-  transition: color 0.15s;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .tab-btn:hover {
-  color: #c9d1d9;
-  background: rgba(255,255,255,0.04);
+  color: #F47920;
+  background: rgba(244, 121, 32, 0.07);
 }
 
 .tab-btn.active {
-  color: #58a6ff;
-  border-bottom-color: #58a6ff;
-  font-weight: 600;
+  color: #fff;
+  font-weight: 700;
+  background: #F47920;
 }
 
 .tab-badge {
-  font-size: 0.7rem;
-  background: #58a6ff;
-  color: #0d1117;
+  font-size: 0.68rem;
+  background: #fff;
+  color: #F47920;
   border-radius: 10px;
   padding: 1px 6px;
   font-weight: 700;
+}
+
+.tab-btn:not(.active) .tab-badge {
+  background: #F47920;
+  color: #fff;
 }
 
 .main-content {
   width: 100%;
 }
 
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 80px 0;
+  color: #CBD5E1;
+}
+.coming-soon-icon { font-size: 2.5rem; }
+.coming-soon-text { font-size: 1rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+
 @media (max-width: 640px) {
   .app {
-    padding: 10px 12px 32px;
+    padding: 0 12px 32px;
   }
-
   .header {
-    padding: 16px 0 12px;
+    padding: 22px 0 14px;
   }
-
   .header h1 {
     font-size: 1.2rem;
   }
-
-  .tab-btn {
-    padding: 8px 12px;
-    font-size: 0.83rem;
-  }
+  .tab-btn { padding: 7px 12px; font-size: 0.82rem; }
 }

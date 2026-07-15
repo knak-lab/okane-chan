@@ -1,0 +1,387 @@
+.osaifu {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── 入力フォーム ── */
+.osaifu-form {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.osaifu-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.osaifu-date {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 11px;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.osaifu-date:focus { border-color: #F47920; }
+
+/* 区分トグル */
+.kubun-toggle {
+  display: flex;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #F8FAFC;
+}
+
+.kubun-btn {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  padding: 7px 18px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.04em;
+}
+
+.kubun-btn + .kubun-btn {
+  border-left: 1px solid #E2E8F0;
+}
+
+.kubun-btn--active {
+  background: #F47920;
+  color: #fff;
+}
+
+.kubun-btn:hover:not(.kubun-btn--active) {
+  background: rgba(244,121,32,0.06);
+  color: #F47920;
+}
+
+/* 入金/出金トグル */
+.direction-toggle {
+  display: flex;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #F8FAFC;
+  flex-shrink: 0;
+}
+
+.direction-btn {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.direction-btn + .direction-btn {
+  border-left: 1px solid #E2E8F0;
+}
+
+.direction-btn--active.direction-btn--out {
+  background: #F47920;
+  color: #fff;
+}
+
+.direction-btn--active.direction-btn--in {
+  background: #059669;
+  color: #fff;
+}
+
+/* 金額・内容・カテゴリ */
+.osaifu-amount {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 11px;
+  font-size: 0.85rem;
+  width: 160px;
+  outline: none;
+  transition: border-color 0.15s;
+  font-variant-numeric: tabular-nums;
+}
+
+.osaifu-amount:focus { border-color: #F47920; }
+
+.osaifu-row--desc {
+  flex-wrap: nowrap;
+}
+
+.osaifu-desc {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 11px;
+  font-size: 0.85rem;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.osaifu-desc:focus { border-color: #F47920; }
+
+.osaifu-cat {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 11px;
+  font-size: 0.82rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  max-width: 160px;
+}
+
+.osaifu-cat:focus { border-color: #F47920; }
+
+.osaifu-add-btn {
+  background: #003087;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 7px 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  box-shadow: 0 1px 4px rgba(0,48,135,0.25);
+}
+
+.osaifu-add-btn:hover { background: #004BB5; }
+
+/* ── ヘッダー ── */
+.osaifu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.osaifu-summary {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.osaifu-count {
+  font-size: 0.82rem;
+  color: #64748B;
+}
+
+.osaifu-total {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1A1F36;
+  font-variant-numeric: tabular-nums;
+}
+
+.osaifu-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.save-btn {
+  background: #F47920;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(244,121,32,0.3);
+}
+
+.save-btn:hover:not(:disabled) { background: #D96010; }
+.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.save-btn--saved { background: #059669; box-shadow: 0 1px 4px rgba(5,150,105,0.3); }
+.save-btn--error { background: #DC2626; box-shadow: none; }
+
+.save-msg {
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+
+.save-msg--saved {
+  background: #ECFDF5;
+  color: #059669;
+  border: 1px solid #A7F3D0;
+}
+
+.save-msg--error {
+  background: #FEF2F2;
+  color: #DC2626;
+  border: 1px solid #FECACA;
+}
+
+/* ── テーブル ── */
+.osaifu-table-wrap {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  overflow: hidden;
+  overflow-x: auto;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+}
+
+.osaifu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.osaifu-table thead tr { background: #F8FAFC; }
+
+.osaifu-table th {
+  text-align: left;
+  padding: 9px 12px;
+  font-weight: 700;
+  color: #94A3B8;
+  border-bottom: 1px solid #E2E8F0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.osaifu-table th.r { text-align: right; }
+
+.osaifu-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #F1F5F9;
+  color: #1A1F36;
+  vertical-align: middle;
+}
+
+.osaifu-table tr:last-child td { border-bottom: none; }
+.osaifu-table tbody tr:hover td { background: rgba(244,121,32,0.03); }
+
+.col-date {
+  white-space: nowrap;
+  color: #94A3B8;
+  font-size: 0.78rem;
+  width: 100px;
+  font-variant-numeric: tabular-nums;
+}
+
+.col-desc { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.col-amount {
+  text-align: right;
+  font-weight: 600;
+  white-space: nowrap;
+  width: 100px;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.83rem;
+  font-variant-numeric: tabular-nums;
+  color: #003087;
+}
+
+.text-income { color: #059669; }
+
+.col-cat {
+  font-size: 0.78rem;
+  color: #64748B;
+  white-space: nowrap;
+}
+
+/* 区分タグ */
+.kubun-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #F1F5F9;
+  color: #64748B;
+}
+
+.kubun-tag--kkr { color: #003087; background: #EEF3FF; }
+.kubun-tag--acc { color: #D96010; background: #FFF4ED; }
+
+/* 削除ボタン */
+.remove-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  color: #94A3B8;
+  padding: 2px 8px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.remove-btn:hover { border-color: #DC2626; color: #DC2626; }
+
+/* 空状態 */
+.osaifu-empty {
+  text-align: center;
+  padding: 56px 24px;
+  color: #CBD5E1;
+  font-size: 0.9rem;
+  background: #fff;
+  border: 2px dashed #E2E8F0;
+  border-radius: 14px;
+}
+
+/* バリデーションエラー */
+.osaifu-form-error {
+  font-size: 0.78rem;
+  color: #DC2626;
+  padding: 4px 2px;
+}
+
+/* ── モバイル ── */
+@media (max-width: 640px) {
+  .osaifu-row--main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .osaifu-amount {
+    width: 100%;
+  }
+  .osaifu-desc {
+    width: 100%;
+    min-width: 0;
+  }
+  .osaifu-cat {
+    width: 100%;
+    max-width: none;
+  }
+  .osaifu-add-btn {
+    width: 100%;
+    padding: 10px;
+  }
+
+  .osaifu-table th:nth-child(5),
+  .osaifu-table td:nth-child(5) { display: none; }
+}

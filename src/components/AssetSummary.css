@@ -1,0 +1,576 @@
+.asset-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── 総資産合計カード ── */
+.asset-grand-card {
+  background: linear-gradient(135deg, #003087 0%, #1a5ab5 100%);
+  border-radius: 16px;
+  padding: 20px 24px 16px;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 48, 135, 0.22);
+}
+
+.asset-grand-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.asset-grand-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.asset-grand-value {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.asset-grand-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  border-top: 1px solid rgba(255,255,255,0.18);
+  padding-top: 12px;
+}
+
+.asset-grand-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.asset-grand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.asset-grand-name {
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.asset-grand-amt {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── ローダー ── */
+.asset-loader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 11px 18px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.asset-loader-label {
+  font-size: 0.78rem;
+  color: #94A3B8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── グラフエリア ── */
+.asset-charts {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 12px;
+}
+
+.asset-chart-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px 16px 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.asset-chart-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 8px;
+}
+
+/* ── 預金合計 KPI ── */
+.asset-total-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-left: 4px solid #003087;
+  border-radius: 12px;
+  padding: 14px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.asset-total-label {
+  font-size: 0.78rem;
+  color: #94A3B8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.asset-total-value {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #1A1F36;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+/* ── セクションアコーディオン ── */
+.asset-accordion {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.asset-accordion-hd {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  user-select: none;
+}
+
+.asset-accordion-hd:hover             { background: rgba(244,121,32,0.04); }
+.asset-accordion-hd--open             { background: rgba(244,121,32,0.06); border-bottom: 1px solid #F1F5F9; }
+
+.asset-accordion-arrow {
+  font-size: 0.72rem;
+  color: #CBD5E1;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.asset-accordion-title {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1A1F36;
+}
+
+.asset-accordion-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #003087;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.asset-accordion-body {
+  padding: 14px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* サブセクション（InvestmentSection 等）がアコーディオン内に入ったとき上罫線・マージンを消す */
+.asset-accordion-body .investment-section,
+.asset-accordion-body .insurance-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ── 口座リスト ── */
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.list-empty {
+  text-align: center;
+  padding: 32px 24px;
+  color: #CBD5E1;
+  font-size: 0.88rem;
+  background: #F8FAFC;
+  border: 2px dashed #E2E8F0;
+  border-radius: 12px;
+}
+
+/* ── 口座カード ── */
+.account-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: box-shadow 0.2s;
+}
+.account-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+
+.account-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+.account-summary:hover     { background: rgba(244,121,32,0.04); }
+.account-summary--open     { background: rgba(244,121,32,0.06); }
+
+.expand-icon {
+  font-size: 0.7rem;
+  color: #CBD5E1;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.kubun-tag {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 9px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.kubun-tag--kkr  { color: #003087; background: #EEF3FF; }
+.kubun-tag--acc  { color: #D96010; background: #FFF4ED; }
+.kubun-tag--共通 { color: #059669; background: #D1FAE5; }
+
+.acc-type {
+  font-size: 0.8rem;
+  color: #64748B;
+  flex-shrink: 0;
+}
+
+.acc-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1A1F36;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.acc-name--empty { font-style: italic; color: #CBD5E1; font-weight: 400; }
+
+.acc-amount {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #003087;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.remove-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  color: #94A3B8;
+  padding: 2px 7px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.remove-btn:hover { border-color: #DC2626; color: #DC2626; }
+
+.edit-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  color: #94A3B8;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.edit-btn:hover { border-color: #F47920; color: #F47920; }
+
+.account-summary--editing {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #FFFBF7;
+}
+
+/* ── 履歴パネル ── */
+.history-panel {
+  border-top: 1px solid #F1F5F9;
+  background: #FAFBFD;
+  padding: 12px 18px 14px;
+}
+
+.history-toolbar { margin-bottom: 10px; }
+
+.add-year-btn {
+  background: none;
+  border: 1px dashed #CBD5E1;
+  border-radius: 7px;
+  color: #94A3B8;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.add-year-btn:hover { border-color: #F47920; color: #F47920; }
+
+.year-add-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.year-add-label { font-size: 0.78rem; color: #64748B; font-weight: 600; }
+.year-input {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  color: #1A1F36;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  width: 90px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.year-input:focus { border-color: #F47920; }
+
+.year-add-ok {
+  background: #003087;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.year-add-ok:hover { background: #004BB5; }
+
+.year-add-cancel {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  color: #94A3B8;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.year-add-cancel:hover { color: #DC2626; border-color: #DC2626; }
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+.history-table th {
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #E2E8F0;
+}
+.history-table th.r { text-align: right; }
+.history-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+.history-table tr:last-child td { border-bottom: none; }
+.history-table tbody tr:hover td { background: rgba(244,121,32,0.03); }
+
+.history-month {
+  font-size: 0.83rem;
+  color: #64748B;
+  font-variant-numeric: tabular-nums;
+  width: 80px;
+  white-space: nowrap;
+}
+.history-amount-cell { text-align: right; }
+.history-amount-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #003087;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  width: 140px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.history-amount-input:hover { background: #fff; border-color: #E2E8F0; }
+.history-amount-input:focus { background: #fff; border-color: #F47920; }
+.history-amount-input::placeholder { color: #CBD5E1; font-weight: 400; }
+
+.remove-record-btn {
+  background: none;
+  border: none;
+  color: #CBD5E1;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.remove-record-btn:hover { color: #DC2626; }
+.history-empty { font-size: 0.82rem; color: #CBD5E1; padding: 8px 2px; }
+
+/* ── 口座追加フォーム ── */
+.add-account-form {
+  background: #FFFBF7;
+  border: 1px solid #FED7A8;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.add-form-title {
+  font-size: 0.78rem;
+  color: #94A3B8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.kubun-toggle {
+  display: flex;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.kubun-btn {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.kubun-btn + .kubun-btn { border-left: 1px solid #E2E8F0; }
+.kubun-btn--active { background: #F47920; color: #fff; }
+.kubun-btn:hover:not(.kubun-btn--active) { background: rgba(244,121,32,0.06); color: #F47920; }
+
+.type-select {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.type-select:focus { border-color: #F47920; }
+
+.name-input {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 6px 11px;
+  font-size: 0.85rem;
+  flex: 1;
+  min-width: 130px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.name-input:focus { border-color: #F47920; }
+
+.add-confirm-btn {
+  background: #003087;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 6px 18px;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.add-confirm-btn:hover { background: #004BB5; }
+
+.add-cancel-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #64748B;
+  padding: 6px 14px;
+  font-size: 0.83rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.add-cancel-btn:hover { border-color: #DC2626; color: #DC2626; }
+
+.add-account-btn {
+  background: #F8FAFC;
+  border: 2px dashed #E2E8F0;
+  border-radius: 10px;
+  color: #94A3B8;
+  padding: 11px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.15s;
+}
+.add-account-btn:hover { border-color: #F47920; color: #F47920; background: rgba(244,121,32,0.03); }
+
+/* ── モバイル ── */
+@media (max-width: 640px) {
+  .asset-grand-value   { font-size: 1.55rem; }
+  .asset-total-value   { font-size: 1.25rem; }
+  .asset-charts        { grid-template-columns: 1fr; }
+  .acc-type            { display: none; }
+  .history-amount-input { width: 110px; }
+  .asset-accordion-body { padding: 10px 12px 14px; }
+}

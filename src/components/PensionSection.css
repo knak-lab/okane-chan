@@ -1,0 +1,214 @@
+/* ── 入力フォーム ── */
+.pension-form {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.pension-form-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pension-form-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pension-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pension-form-label {
+  font-size: 0.72rem;
+  color: #64748B;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── 記録一覧 ── */
+.pension-records {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pension-latest-badge {
+  background: #003087;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 7px;
+  vertical-align: middle;
+  letter-spacing: 0.03em;
+}
+
+/* ── シミュレーションカード ── */
+.pension-sim {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-left: 4px solid #003087;
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.pension-sim-meta {
+  font-size: 0.75rem;
+  color: #94A3B8;
+  font-weight: 600;
+}
+
+/* ── 3シナリオ ── */
+.pension-scenarios {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.pension-scenario {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 10px;
+  border-radius: 10px;
+  border: 1px solid #E2E8F0;
+  text-align: center;
+}
+
+.pension-scenario--early  { background: #FFF4F4; border-color: #FECACA; }
+.pension-scenario--normal { background: #EEF3FF; border-color: #BFDBFE; }
+.pension-scenario--defer  { background: #F0FDF4; border-color: #BBF7D0; }
+
+.pension-scenario-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748B;
+  white-space: nowrap;
+}
+
+.pension-scenario-amt {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #1A1F36;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.pension-scenario-amt--base {
+  font-size: 1.25rem;
+  color: #003087;
+}
+
+.pension-unit {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #94A3B8;
+  margin-left: 2px;
+}
+
+.pension-scenario-pct {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.pension-neutral { color: #64748B; }
+
+/* ── 損益分岐点 ── */
+.pension-breakeven {
+  background: #F8FAFC;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pension-be-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.pension-be-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pension-be-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pension-be-label {
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 600;
+  min-width: 130px;
+  flex-shrink: 0;
+}
+
+.pension-be-age {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #003087;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.pension-be-note {
+  font-size: 0.72rem;
+  color: #94A3B8;
+}
+
+/* ── 累計テーブルトグル ── */
+.pension-cum-toggle {
+  background: none;
+  border: 1px dashed #CBD5E1;
+  border-radius: 7px;
+  color: #94A3B8;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.15s;
+}
+.pension-cum-toggle:hover { border-color: #003087; color: #003087; }
+
+.pension-cum-table {
+  margin-top: 4px;
+}
+
+/* ── モバイル ── */
+@media (max-width: 640px) {
+  .pension-scenarios       { grid-template-columns: 1fr; }
+  .pension-scenario-amt    { font-size: 0.95rem; }
+  .pension-scenario-amt--base { font-size: 1.05rem; }
+  .pension-form-fields     { flex-direction: column; align-items: flex-start; }
+  .pension-be-label        { min-width: unset; }
+  .pension-be-note         { display: none; }
+}

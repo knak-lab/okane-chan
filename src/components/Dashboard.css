@@ -1,32 +1,36 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
-/* シートローダー */
+/* ── シートローダー ── */
 .sheet-loader {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 10px;
-  padding: 10px 16px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 11px 18px;
   flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 
 .sheet-loader-label {
   font-size: 0.78rem;
-  color: #8b949e;
+  color: #94A3B8;
   white-space: nowrap;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .month-select {
-  background: #21262d;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #c9d1d9;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  color: #1A1F36;
   padding: 5px 10px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -34,112 +38,111 @@
   transition: border-color 0.15s;
 }
 
-.month-select:focus { border-color: #58a6ff; }
+.month-select:focus { border-color: #F47920; }
 .month-select:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .load-btn {
-  background: #21262d;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #58a6ff;
-  padding: 5px 14px;
+  background: #003087;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  padding: 6px 16px;
   font-size: 0.82rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
 }
 
-.load-btn:hover:not(:disabled) {
-  background: rgba(88,166,255,0.1);
-  border-color: #58a6ff;
-}
-
+.load-btn:hover:not(:disabled) { background: #004BB5; }
 .load-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.load-btn--loading { color: #8b949e; }
+.load-btn--loading { background: #94A3B8; }
 
 .load-msg { font-size: 0.78rem; }
-.load-msg--done  { color: #3fb950; }
-.load-msg--error { color: #f85149; }
+.load-msg--done  { color: #059669; }
+.load-msg--error { color: #DC2626; }
 
-/* KPI */
+/* ── KPI ── */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 .kpi-card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 12px;
-  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  transition: border-color 0.2s;
+  gap: 6px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
 
 .kpi-card:hover {
-  border-color: #484f58;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border-color: #CBD5E1;
 }
 
 .kpi-card.kpi-danger {
-  border-color: #6e2c2c;
-  background: #1a1014;
+  border-color: #FECACA;
+  background: #FFF5F5;
 }
 
 .kpi-label {
   font-size: 0.72rem;
-  color: #8b949e;
+  color: #94A3B8;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .kpi-value {
-  font-size: 1.7rem;
-  font-weight: 700;
-  color: #e6edf3;
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #003087;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
 .kpi-unit {
   font-size: 0.9rem;
-  font-weight: 400;
-  color: #8b949e;
+  font-weight: 500;
+  color: #64748B;
 }
 
 .kpi-danger .kpi-value {
-  color: #f85149;
+  color: #DC2626;
 }
 
 .kpi-sub {
   font-size: 0.75rem;
-  color: #6e7681;
+  color: #94A3B8;
 }
 
-/* Charts row */
+/* ── Charts row ── */
 .charts-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 14px;
 }
 
-/* Chart card */
 .chart-card {
-  background: #161b22;
-  border: 1px solid #30363d;
-  border-radius: 12px;
-  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 
 .chart-title {
   font-size: 0.72rem;
-  color: #8b949e;
+  color: #94A3B8;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 14px;
 }
 
@@ -148,29 +151,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #484f58;
+  color: #CBD5E1;
   font-size: 0.85rem;
 }
 
-/* Tooltip */
+/* ── Tooltip ── */
 .chart-tip {
-  background: #0d1117;
-  border: 1px solid #30363d;
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
   padding: 10px 14px;
   font-size: 0.83rem;
-  color: #c9d1d9;
-  line-height: 1.6;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  color: #1A1F36;
+  line-height: 1.7;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
 }
 
 .chart-tip-label {
-  color: #6e7681;
+  color: #94A3B8;
   font-size: 0.75rem;
   margin-bottom: 4px;
 }
 
-/* Budget table */
+/* ── Budget table ── */
 .budget-table {
   width: 100%;
   border-collapse: collapse;
@@ -179,51 +182,87 @@
 
 .budget-table th {
   text-align: left;
-  padding: 8px 10px;
-  color: #6e7681;
-  border-bottom: 1px solid #21262d;
-  font-weight: 600;
-  font-size: 0.72rem;
+  padding: 9px 12px;
+  color: #94A3B8;
+  border-bottom: 2px solid #F1F5F9;
+  font-weight: 700;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
 
 .budget-table th.r,
-.budget-table td.r {
-  text-align: right;
-}
+.budget-table td.r { text-align: right; }
 
 .budget-table td {
-  padding: 11px 10px;
-  color: #c9d1d9;
-  border-bottom: 1px solid #161b22;
+  padding: 12px 12px;
+  color: #1A1F36;
+  border-bottom: 1px solid #F1F5F9;
   vertical-align: middle;
 }
 
 .budget-table tbody tr:hover td {
-  background: rgba(255,255,255,0.025);
+  background: rgba(244, 121, 32, 0.03);
 }
 
 .budget-table tfoot td {
-  border-top: 1px solid #30363d;
   border-bottom: none;
-  padding-top: 13px;
-  color: #e6edf3;
+  color: #1A1F36;
+}
+
+.tfoot-total td {
+  border-top: 2px solid #E2E8F0;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  font-weight: 700;
+}
+
+.tfoot-mid td {
+  border-top: 1px dashed #E2E8F0;
+  padding-top: 9px;
+  padding-bottom: 12px;
+  background: #F8FAFC;
+}
+
+.mid-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748B;
+  margin-right: 6px;
+}
+
+.mid-sub {
+  font-size: 0.72rem;
+  color: #94A3B8;
+  font-weight: 400;
 }
 
 .dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   margin-right: 8px;
   flex-shrink: 0;
 }
 
 .bucket-name {
-  font-size: 0.85rem;
-  color: #e6edf3;
+  font-size: 0.87rem;
+  color: #1A1F36;
+  font-weight: 500;
+}
+
+.annual-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #059669;
+  background: #D1FAE5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
 
 .cats {
@@ -234,12 +273,13 @@
 
 .cat-tag {
   display: inline-block;
-  font-size: 0.7rem;
-  color: #8b949e;
-  background: #21262d;
+  font-size: 0.68rem;
+  color: #64748B;
+  background: #F1F5F9;
   border-radius: 4px;
-  padding: 1px 6px;
+  padding: 2px 7px;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .mono {
@@ -248,10 +288,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-.text-ok { color: #3fb950; }
-.text-danger { color: #f85149; }
+.text-ok     { color: #059669; font-weight: 600; }
+.text-danger { color: #DC2626; font-weight: 600; }
 
-/* Progress bar */
+/* ── Progress bar ── */
 .progress-cell {
   display: flex;
   align-items: center;
@@ -262,87 +302,148 @@
 .progress-track {
   flex: 1;
   min-width: 60px;
-  height: 4px;
-  background: #21262d;
-  border-radius: 2px;
+  height: 5px;
+  background: #F1F5F9;
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  border-radius: 2px;
+  border-radius: 3px;
   transition: width 0.4s ease;
 }
 
 .progress-pct {
-  font-size: 0.75rem;
-  color: #6e7681;
+  font-size: 0.72rem;
+  color: #94A3B8;
   font-variant-numeric: tabular-nums;
   width: 34px;
   text-align: right;
 }
 
-/* ── モバイル（375px〜640px） ── */
-@media (max-width: 640px) {
-  .dashboard {
-    gap: 10px;
-  }
+/* ── バケット行クリック展開 ── */
+.bucket-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
 
-  /* KPI: 1枚目フル幅、2・3枚目2列 */
+.bucket-row:hover td { background: rgba(244, 121, 32, 0.04); }
+.bucket-row--open td { background: rgba(244, 121, 32, 0.07); }
+
+.expand-icon {
+  display: inline-block;
+  width: 14px;
+  font-size: 0.7rem;
+  color: #CBD5E1;
+  margin-right: 4px;
+  user-select: none;
+}
+
+/* ── 明細パネル ── */
+.detail-row-wrap td { padding: 0; border-bottom: 1px solid #E2E8F0; }
+
+.detail-panel {
+  background: #F8FAFC;
+  padding: 10px 16px 14px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.detail-empty {
+  color: #CBD5E1;
+  font-size: 0.82rem;
+  padding: 8px 0;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.detail-table th {
+  text-align: left;
+  padding: 5px 8px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.detail-table th.r { text-align: right; }
+
+.detail-table td {
+  padding: 7px 8px;
+  color: #1A1F36;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.detail-date   { white-space: nowrap; color: #94A3B8; font-size: 0.78rem; width: 90px; }
+.detail-desc   { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-amount { white-space: nowrap; width: 90px; }
+
+.detail-cat select {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  color: #1A1F36;
+  font-size: 0.78rem;
+  padding: 3px 7px;
+  cursor: pointer;
+  outline: none;
+  max-width: 160px;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.detail-cat select:focus { border-color: #F47920; }
+
+/* save btn in sheet-loader */
+.save-btn-dash {
+  background: #F47920;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.save-btn-dash:hover:not(:disabled) { background: #D96010; }
+.save-btn-dash:disabled { opacity: 0.5; cursor: not-allowed; }
+.save-btn-dash--saved { background: #059669; }
+.save-btn-dash--error { background: #DC2626; }
+
+/* ── モバイル ── */
+@media (max-width: 640px) {
+  .dashboard { gap: 12px; }
+
   .kpi-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .kpi-card:first-child { grid-column: span 2; }
+  .kpi-value { font-size: 1.4rem; }
+  .kpi-card { padding: 14px 16px; }
 
-  .kpi-card:first-child {
-    grid-column: span 2;
-  }
+  .charts-row { grid-template-columns: 1fr; }
+  .chart-card { padding: 14px 12px; }
 
-  .kpi-value {
-    font-size: 1.35rem;
-  }
-
-  .kpi-card {
-    padding: 14px 16px;
-  }
-
-  /* グラフ: 縦並び */
-  .charts-row {
-    grid-template-columns: 1fr;
-  }
-
-  .chart-card {
-    padding: 14px 12px;
-  }
-
-  /* カテゴリ列を非表示 */
   .budget-table .col-cats,
-  .budget-table .col-cats-head {
-    display: none;
-  }
-
+  .budget-table .col-cats-head { display: none; }
   .budget-table th,
-  .budget-table td {
-    padding: 9px 7px;
-    font-size: 0.78rem;
-  }
+  .budget-table td { padding: 9px 7px; font-size: 0.78rem; }
+  .budget-table .mono { font-size: 0.78rem; }
+  .bucket-name { font-size: 0.8rem; }
+  .progress-track { min-width: 36px; }
 
-  .budget-table .mono {
-    font-size: 0.78rem;
-  }
-
-  .bucket-name {
-    font-size: 0.8rem;
-  }
-
-  .progress-track {
-    min-width: 36px;
-  }
-
-  /* 予算・残り列を非表示（実績・達成率のみ残す） */
   .budget-table .col-budget,
   .budget-table .col-budget-head,
   .budget-table .col-remaining,
-  .budget-table .col-remaining-head {
-    display: none;
-  }
+  .budget-table .col-remaining-head { display: none; }
 }

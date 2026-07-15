@@ -1,0 +1,253 @@
+.ins-sim {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── 為替レートバー ── */
+.sim-rate-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 13px 18px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.sim-rate-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748B;
+  white-space: nowrap;
+}
+
+.sim-rate-input {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 12px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  width: 100px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sim-rate-input:focus { border-color: #F47920; background: #fff; }
+
+.sim-fetch-btn {
+  background: #003087;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 8px 16px;
+  font-size: 0.83rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.sim-fetch-btn:hover:not(:disabled) { background: #004BB5; }
+.sim-fetch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.sim-rate-msg {
+  font-size: 0.78rem;
+  color: #059669;
+  font-weight: 600;
+}
+
+.sim-reload-btn {
+  margin-left: 4px;
+}
+
+/* ── 全保険合計サマリ ── */
+.sim-summary-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-left: 4px solid #003087;
+  border-radius: 12px;
+  padding: 16px 22px;
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.sim-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sim-summary-label {
+  font-size: 0.72rem;
+  color: #94A3B8;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.sim-summary-val {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #1A1F36;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.sim-summary-val--rate {
+  color: #003087;
+  font-size: 1.1rem;
+}
+
+/* ── ヒント ── */
+.sim-hint {
+  text-align: center;
+  color: #94A3B8;
+  font-size: 0.85rem;
+  padding: 20px;
+  background: #fff;
+  border: 1px dashed #E2E8F0;
+  border-radius: 12px;
+}
+
+/* ── 保険カードリスト ── */
+.sim-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── 個別シミュレーションカード ── */
+.sim-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.sim-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  background: rgba(244,121,32,0.05);
+  border-bottom: 1px solid #F1F5F9;
+  flex-wrap: wrap;
+}
+
+.sim-card-name {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #003087;
+  flex: 1;
+  min-width: 120px;
+}
+
+.sim-card-meta {
+  font-size: 0.78rem;
+  color: #64748B;
+  white-space: nowrap;
+}
+
+/* 累計支払い */
+.sim-cumulative {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #F1F5F9;
+  flex-wrap: wrap;
+}
+
+.sim-cum-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sim-cum-value {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #1A1F36;
+  font-variant-numeric: tabular-nums;
+}
+
+.sim-cum-note {
+  font-size: 0.75rem;
+  color: #CBD5E1;
+}
+
+/* シミュレーションテーブル */
+.sim-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 18px 16px;
+}
+
+.sim-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  min-width: 700px;
+}
+
+.sim-table th {
+  padding: 7px 10px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #E2E8F0;
+  white-space: nowrap;
+}
+.sim-table th.r { text-align: right; }
+
+.sim-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+.sim-table tr:last-child td { border-bottom: none; }
+.sim-table tbody tr:hover td { background: rgba(244,121,32,0.025); }
+
+.sim-table td.r      { text-align: right; }
+.sim-year            { font-size: 0.85rem; font-weight: 700; color: #1A1F36; white-space: nowrap; }
+.sim-usd             { color: #64748B; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.sim-jpy             { color: #003087; font-weight: 600; font-variant-numeric: tabular-nums; }
+.sim-pl              { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sim-pl--pos         { color: #059669; }
+.sim-pl--neg         { color: #DC2626; }
+
+.sim-no-data {
+  font-size: 0.82rem;
+  color: #CBD5E1;
+  padding: 14px 18px;
+}
+
+/* 空状態 */
+.sim-empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #CBD5E1;
+  background: #fff;
+  border: 2px dashed #E2E8F0;
+  border-radius: 14px;
+}
+.sim-empty-state p { margin: 0; font-size: 0.9rem; font-weight: 600; }
+.sim-empty-hint { font-size: 0.8rem !important; font-weight: 400 !important; margin-top: 6px !important; }
+
+/* モバイル */
+@media (max-width: 640px) {
+  .sim-summary-card { gap: 16px; }
+  .sim-summary-val  { font-size: 1.1rem; }
+  .sim-card-meta    { display: none; }
+}

@@ -1,3 +1,5 @@
+import { loadCustomRules } from './customRules'
+
 const CATEGORY_RULES = [
   {
     category: '消・食費',
@@ -8,7 +10,7 @@ const CATEGORY_RULES = [
       'スターバックス', 'スタバ', 'タリーズ', 'コメダ', 'エクセルシオール',
       'セブン-イレブン', 'セブンイレブン', 'ローソン', 'ファミリーマート', 'ファミマ', 'ミニストップ',
       'イオン', '西友', 'マルエツ', 'ライフ', 'サミット', 'ヨークマート', 'コープ', '成城石井',
-      '業務スーパー', 'オーケー', 'ビッグエー',
+      '業務スーパー', 'オーケー', 'ビッグエー', '東急ストア',
       '食料', '食品', 'フード', 'レストラン', '居酒屋', '焼肉', '寿司', 'ラーメン', 'カフェ',
       'カフェテリア', '弁当', 'デリバリー', 'Uber Eats', 'UberEats', 'menu', 'Wolt',
       'ピザ', 'ドミノ', '餃子の王将', '大戸屋', '丸亀製麺', 'はなまる',
@@ -56,7 +58,7 @@ const CATEGORY_RULES = [
     ],
   },
   {
-    category: '浪・ファッション',
+    category: '浪・ファッション／美容',
     keywords: [
       'ユニクロ', 'GU', 'H&M', 'ZARA', 'ザラ', 'Forever21',
       'BEAMS', 'Urban Research', 'アーバンリサーチ', 'nano・universe', 'SHIPS',
@@ -96,16 +98,29 @@ export const ALL_CATEGORIES = [
   '消・食費',
   '消・生活費',
   '消・交通',
+  '家賃',
   '浪・遊び／娯楽',
-  '浪・ファッション',
+  '浪・ファッション／美容',
+  '浪・土産',
+  '浪・旅',
   '投・自己投資',
   '投・全般資産',
+  'home',
   '他・特別費',
+  '妊活',
+  '収入・相殺',
+  'ポイント',
+  '対象外',
 ]
-
 export function categorize(description) {
   if (!description) return DEFAULT_CATEGORY
   const lower = description.toLowerCase()
+
+  // カスタムルール優先（localStorage）
+  const custom = loadCustomRules()
+  for (const [kw, cat] of Object.entries(custom)) {
+    if (lower.includes(kw.toLowerCase())) return cat
+  }
 
   for (const rule of CATEGORY_RULES) {
     for (const keyword of rule.keywords) {

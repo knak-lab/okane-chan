@@ -1,0 +1,264 @@
+.annual-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Toolbar ── */
+.ap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  padding: 11px 18px;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.ap-year-select {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 7px;
+  color: #1A1F36;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ap-year-select:focus { border-color: #F47920; }
+
+.ap-save-btn {
+  background: #F47920;
+  border: none;
+  border-radius: 7px;
+  color: #fff;
+  padding: 6px 16px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.ap-save-btn:hover:not(:disabled) { background: #D96010; }
+.ap-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ap-save-btn--saved   { background: #059669; }
+.ap-save-btn--error   { background: #DC2626; }
+.ap-save-btn--loading { background: #94A3B8; }
+
+.ap-msg           { font-size: 0.78rem; }
+.ap-msg--saved    { color: #059669; }
+.ap-msg--error    { color: #DC2626; }
+
+/* ── Table scroll wrapper ── */
+.ap-scroll {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+/* ── Table ── */
+.ap-table {
+  width: 100%;
+  min-width: 1000px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.ap-th-label {
+  text-align: left;
+  padding: 11px 16px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid #F1F5F9;
+  min-width: 148px;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+.ap-th-month {
+  text-align: right;
+  padding: 11px 8px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid #F1F5F9;
+  min-width: 80px;
+  white-space: nowrap;
+}
+
+.ap-th-total {
+  text-align: right;
+  padding: 11px 16px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 2px solid #F1F5F9;
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+/* ── Section header ── */
+.ap-section-hdr td {
+  padding: 7px 16px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #003087;
+  background: #EEF2FF;
+  border-top: 1px solid #E2E8F0;
+}
+
+/* ── Data rows ── */
+.ap-data-row:hover td { background: rgba(244,121,32,0.03); }
+
+.ap-row-label {
+  padding: 7px 16px;
+  color: #1A1F36;
+  font-weight: 500;
+  white-space: nowrap;
+  border-bottom: 1px solid #F1F5F9;
+  position: sticky;
+  left: 0;
+  background: #fff;
+  z-index: 1;
+}
+.ap-data-row:hover .ap-row-label { background: #FFFBF7; }
+
+.ap-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* ── Editable cells ── */
+.ap-cell {
+  padding: 3px 3px;
+  border-bottom: 1px solid #F1F5F9;
+  text-align: right;
+}
+
+.ap-input {
+  width: 100%;
+  min-width: 72px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #1A1F36;
+  font-size: 0.82rem;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 4px 6px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ap-input:focus {
+  border-color: #F47920;
+  background: #FFF8F4;
+}
+.ap-input::placeholder { color: #E2E8F0; }
+
+/* ── Row total ── */
+.ap-total-cell {
+  padding: 7px 16px;
+  text-align: right;
+  border-bottom: 1px solid #F1F5F9;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #1A1F36;
+  white-space: nowrap;
+}
+
+/* ── Subtotal row ── */
+.ap-subtotal-row td {
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  border-bottom: 2px solid #CBD5E1;
+}
+.ap-subtotal-row .ap-row-label { background: #F8FAFC; }
+
+.ap-subtotal-cell {
+  padding: 8px 8px;
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: #003087;
+  white-space: nowrap;
+}
+
+/* ── Balance row ── */
+.ap-balance-row td {
+  background: #1E293B;
+  border-top: 2px solid #003087;
+  padding: 10px 8px;
+}
+.ap-balance-row .ap-row-label {
+  background: #1E293B;
+  color: #CBD5E1;
+  font-weight: 700;
+}
+
+.ap-balance-cell {
+  text-align: right;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.83rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.ap-balance-cell.ap-pos { color: #34D399; }
+.ap-balance-cell.ap-neg { color: #F87171; }
+
+/* ── 年間バケット行 ── */
+.ap-annual-row td { background: #F8FAFC; }
+.ap-annual-row:hover td { background: rgba(244,121,32,0.04); }
+.ap-annual-row .ap-row-label { background: #F8FAFC; }
+.ap-annual-row:hover .ap-row-label { background: #FFFBF7; }
+
+.ap-annual-cell {
+  padding: 3px 8px;
+  border-bottom: 1px solid #F1F5F9;
+}
+
+.ap-annual-input {
+  width: 200px;
+  max-width: 100%;
+}
+
+.ap-annual-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #059669;
+  background: #D1FAE5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+}
+
+.ap-subtotal-annual {
+  border-left: 2px solid #CBD5E1;
+}

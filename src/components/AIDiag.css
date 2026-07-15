@@ -1,0 +1,182 @@
+/* ─── AI診断セクション ──────────────────────────── */
+.ai-diag {
+  background: linear-gradient(135deg, #eef2ff 0%, #fff 60%);
+  border: 1px solid #c7d5f5;
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-top: 0.875rem;
+}
+
+.ai-diag-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-diag-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #003087;
+  margin: 0 0 0.25rem;
+}
+
+.ai-diag-desc {
+  font-size: 0.78rem;
+  color: #666;
+  margin: 0;
+}
+
+/* 診断ボタン */
+.ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.3rem;
+  background: linear-gradient(135deg, #003087, #1a5ab5);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.ai-btn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.ai-btn.loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* スピナー */
+.ai-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: ai-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ai-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 結果エリア */
+.ai-result {
+  margin-top: 1rem;
+  border-top: 1px solid #dde5f5;
+  padding-top: 1rem;
+}
+
+/* エラー */
+.ai-error {
+  margin-top: 0.75rem;
+  padding: 0.8rem 1rem;
+  background: #fff5f5;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #721c24;
+}
+
+.ai-error-hint {
+  margin: 0.5rem 0 0.5rem;
+  font-size: 0.78rem;
+  color: #555;
+  line-height: 1.5;
+}
+
+.ai-error-hint code {
+  background: #f0f0f0;
+  color: #c00;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.82rem;
+  font-family: monospace;
+}
+
+/* 再診断ボタン */
+.ai-redo-btn {
+  margin-top: 1rem;
+  padding: 0.38rem 1rem;
+  background: #fff;
+  border: 1.5px solid #c7d5f5;
+  border-radius: 6px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: #003087;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ai-redo-btn:hover {
+  background: #eef2ff;
+}
+
+/* ─── マークダウン ─────────────────────────────── */
+.md-body {
+  font-size: 0.88rem;
+  line-height: 1.7;
+  color: #333;
+}
+
+.md-h2 {
+  font-size: 0.92rem;
+  font-weight: 700;
+  margin: 1.1rem 0 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+}
+
+.md-h2:first-child {
+  margin-top: 0;
+}
+
+.md-h2.sec-spend {
+  background: #fff3e0;
+  color: #bf360c;
+  border-left-color: #F47920;
+}
+
+.md-h2.sec-asset {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border-left-color: #2ecc71;
+}
+
+.md-h2.sec-risk {
+  background: #fce4ec;
+  color: #880e4f;
+  border-left-color: #e74c3c;
+}
+
+.md-h2.sec-advice {
+  background: #e8eaf6;
+  color: #1a237e;
+  border-left-color: #003087;
+}
+
+.md-ul {
+  margin: 0.3rem 0 0.5rem;
+  padding-left: 1.4rem;
+}
+
+.md-ul li {
+  margin-bottom: 0.3rem;
+}
+
+.md-p {
+  margin: 0.3rem 0;
+}

@@ -1,0 +1,302 @@
+/* ── セクション全体 ── */
+.insurance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 2px solid #E2E8F0;
+}
+
+.ins-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ins-section-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #003087;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.ins-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── 保険リスト ── */
+.ins-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ins-empty {
+  text-align: center;
+  padding: 32px 24px;
+  color: #CBD5E1;
+  font-size: 0.85rem;
+  background: #fff;
+  border: 2px dashed #E2E8F0;
+  border-radius: 12px;
+}
+
+/* ── 保険カード ── */
+.ins-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: box-shadow 0.2s;
+}
+
+.ins-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.09); }
+
+/* ── アコーディオンヘッダ ── */
+.ins-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.ins-header:hover       { background: rgba(244,121,32,0.04); }
+.ins-header--open       { background: rgba(244,121,32,0.06); border-bottom: 1px solid #F1F5F9; }
+
+.ins-expand {
+  font-size: 0.7rem;
+  color: #CBD5E1;
+  width: 12px;
+  flex-shrink: 0;
+}
+
+.ins-card-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1A1F36;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ins-card-meta {
+  font-size: 0.78rem;
+  color: #64748B;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ins-remove-card-btn {
+  background: none;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  color: #94A3B8;
+  padding: 2px 7px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.ins-remove-card-btn:hover { border-color: #DC2626; color: #DC2626; }
+
+/* ── ボディ ── */
+.ins-body {
+  background: #FAFBFD;
+}
+
+/* ── タブバー ── */
+.ins-tab-bar {
+  display: flex;
+  border-bottom: 1px solid #E2E8F0;
+  background: #fff;
+  padding: 0 16px;
+  gap: 0;
+}
+
+.ins-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #94A3B8;
+  padding: 9px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  margin-bottom: -1px;
+  white-space: nowrap;
+}
+
+.ins-tab-btn:hover { color: #F47920; }
+.ins-tab-btn--active { color: #F47920; border-bottom-color: #F47920; }
+
+/* ── 契約情報フォーム ── */
+.ins-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.ins-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ins-field-label {
+  font-size: 0.78rem;
+  color: #64748B;
+  font-weight: 700;
+  width: 120px;
+  flex-shrink: 0;
+}
+
+.ins-input {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1A1F36;
+  padding: 7px 11px;
+  font-size: 0.85rem;
+  flex: 1;
+  max-width: 280px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ins-input:focus { border-color: #F47920; background: #fff; }
+.ins-input--num  { max-width: 160px; }
+
+.ins-currency-badge {
+  background: #EEF3FF;
+  color: #003087;
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* ── テーブル共通 ── */
+.ins-surrender,
+.ins-payments {
+  padding: 14px 16px 16px;
+}
+
+.ins-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ins-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+  min-width: 480px;
+}
+
+.ins-table th {
+  text-align: left;
+  padding: 6px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #E2E8F0;
+  white-space: nowrap;
+}
+
+.ins-table td {
+  padding: 4px 4px;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+.ins-table tr:last-child td { border-bottom: none; }
+.ins-table tbody tr:hover td { background: rgba(244,121,32,0.03); }
+
+.ins-table-empty {
+  text-align: center;
+  color: #CBD5E1;
+  font-size: 0.8rem;
+  padding: 12px !important;
+}
+
+.ins-cell-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #1A1F36;
+  padding: 5px 7px;
+  font-size: 0.83rem;
+  width: 100%;
+  min-width: 64px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ins-cell-input:hover  { background: #fff; border-color: #E2E8F0; }
+.ins-cell-input:focus  { background: #fff; border-color: #F47920; }
+.ins-cell-input::placeholder { color: #CBD5E1; }
+
+.ins-rm-row {
+  background: none;
+  border: none;
+  color: #CBD5E1;
+  padding: 3px 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.ins-rm-row:hover { color: #DC2626; }
+
+.ins-add-row-btn {
+  background: none;
+  border: 1px dashed #CBD5E1;
+  border-radius: 7px;
+  color: #94A3B8;
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: all 0.15s;
+}
+.ins-add-row-btn:hover { border-color: #F47920; color: #F47920; }
+
+/* ── 追加ボタン ── */
+.ins-add-btn {
+  background: #fff;
+  border: 2px dashed #E2E8F0;
+  border-radius: 12px;
+  color: #94A3B8;
+  padding: 12px 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.15s;
+}
+.ins-add-btn:hover { border-color: #F47920; color: #F47920; background: rgba(244,121,32,0.03); }
+
+/* ── モバイル ── */
+@media (max-width: 640px) {
+  .ins-card-meta { display: none; }
+  .ins-info { padding: 12px 14px; }
+  .ins-field { flex-wrap: wrap; }
+  .ins-field-label { width: 100%; }
+}

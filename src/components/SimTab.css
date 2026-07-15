@@ -1,0 +1,303 @@
+/* ─── SimTab ──────────────────────────────────── */
+.sim-tab {
+  padding-bottom: 2rem;
+}
+
+.sim-section {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e8e8e8;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.875rem;
+}
+
+/* ヘッダ */
+.sim-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+}
+
+.sim-main-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #003087;
+  margin: 0;
+}
+
+.sim-load-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* セクション見出し */
+.sim-section-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #003087;
+  margin: 0 0 0.8rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid #F47920;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.sim-section-note {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #aaa;
+}
+
+/* ─── フィールドグリッド ─── */
+.sim-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.5rem;
+}
+
+.sim-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  cursor: default;
+}
+
+.sim-field-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #555;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.sim-field-note {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: #bbb;
+}
+
+.sim-field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.sim-field-unit {
+  font-size: 0.75rem;
+  color: #999;
+  white-space: nowrap;
+}
+
+.sim-num-input {
+  width: 90px;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  text-align: right;
+  color: #222;
+}
+
+.sim-num-input--wide {
+  width: 140px;
+}
+
+.sim-num-input:focus {
+  outline: none;
+  border-color: #F47920;
+}
+
+/* 年金受給選択ボタン */
+.sim-choice-btn {
+  padding: 0.28rem 0.7rem;
+  border: 1.5px solid #ddd;
+  border-radius: 6px;
+  background: #f8f8f8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+
+.sim-choice-btn.active {
+  background: #F47920;
+  color: #fff;
+  border-color: #F47920;
+}
+
+/* ─── ライフイベント ─── */
+.sim-events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sim-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.sim-event-toggle {
+  padding: 0.35rem 1.1rem;
+  border: 2px solid #ddd;
+  border-radius: 20px;
+  background: #f8f8f8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.sim-event-toggle.active {
+  background: #003087;
+  color: #fff;
+  border-color: #003087;
+}
+
+.sim-event-body {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  background: #f5f8ff;
+  border-radius: 8px;
+  border: 1px solid #dce8f5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: flex-end;
+}
+
+.sim-ef {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  cursor: default;
+}
+
+.sim-ef-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.sim-ef-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.sim-ef-unit {
+  font-size: 0.73rem;
+  color: #999;
+  white-space: nowrap;
+}
+
+.sim-mini-input {
+  width: 75px;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  text-align: right;
+}
+
+.sim-mini-input--wide {
+  width: 120px;
+}
+
+.sim-mini-input:focus {
+  outline: none;
+  border-color: #F47920;
+}
+
+.sim-mini-select {
+  padding: 0.28rem 0.4rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.77rem;
+  color: #333;
+  max-width: 280px;
+}
+
+/* ─── グラフ ─── */
+.sim-chart-wrap {
+  margin-top: 0.25rem;
+}
+
+/* ─── カスタムツールチップ ─── */
+.sim-tooltip {
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sim-tt-age {
+  font-weight: 700;
+  color: #003087;
+  margin: 0 0 0.3rem;
+}
+
+.sim-tt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+}
+
+/* ─── 老後資金チェック ─── */
+.sim-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.65rem;
+}
+
+.sim-sum-card {
+  background: #f9f9f9;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.sim-sum-card.pos {
+  background: #f0fff5;
+  border-color: #2ecc71;
+}
+
+.sim-sum-card.neg {
+  background: #fff5f5;
+  border-color: #e74c3c;
+}
+
+.sim-sum-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #666;
+}
+
+.sim-sum-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #003087;
+  word-break: break-all;
+}
+
+.sim-sum-sub {
+  font-size: 0.65rem;
+  color: #aaa;
+  line-height: 1.3;
+}
