@@ -256,27 +256,71 @@ export default function AssetSummary() {
 
   // ── グラフデータ ──
   const { barData, pieData } = useMemo(() => {
-    // 月別預金（棒グラフ用）
-    const depM = {}
-    accounts.filter(a => CAT_DEPOSIT.includes(a.種別)).forEach(a =>
-      a.records.forEach(r => {
-        if (r.amount !== '' && r.amount != null)
-          depM[r.month] = (depM[r.month] || 0) + parseAmt(r.amount)
-      })
-    )
-    // 月別投資信託
-    const invM = {}
-    invRecords.forEach(r => {
-      if (r['評価額']) invM[r['年月']] = (invM[r['年月']] || 0) + parseAmt(r['評価額'])
-    })
-    // 月別DC
-    const dcM = {}
-    dcRecords.forEach(r => {
-      if (r['評価額']) dcM[r['年月']] = (dcM[r['年月']] || 0) + parseAmt(r['評価額'])
-    })
+    // GASはDate型セルを "YYYY/MM/DD" で返すため "YYYY-MM" に正規化する
+    // （未保存の新規追加分は "YYYY-MM" のまま渡ってくることもある）
+    const toYM = (s) => {
+      const m = String(s || '').match(/(\d{4})[/-](\d{1,2})/)
+      return m ? `${m[1]}-${m[2].padStart(2, '0')}` : ''
+    }
 
-    const allMonths = new Set([...Object.keys(depM), ...Object.keys(invM), ...Object.keys(dcM)])
-    const bar = Array.from(allMonths).sort().map(m => ({
+    // 口座/ファンド/機関ごとに月昇順の記録列を作る（forward-fill用）
+    const depSeries = accounts
+      .filter(a => CAT_DEPOSIT.includes(a.種別))
+      .map(a => a.records
+        .filter(r => r.amount !== '' && r.amount != null && toYM(r.month))
+        .map(r => ({ month: toYM(r.month), value: parseAmt(r.amount) }))
+        .sort((x, y) => x.month.localeCompare(y.month))
+      )
+
+    const groupByKey = (records, keyField, monthField, valField) => {
+      const grouped = {}
+      records.forEach(r => {
+        if (!r[valField] || !toYM(r[monthField])) return
+        const k = r[keyField]
+        if (!grouped[k]) grouped[k] = []
+        grouped[k].push({ month: toYM(r[monthField]), value: parseAmt(r[valField]) })
+      })
+      return Object.values(grouped).map(recs => recs.sort((x, y) => x.month.localeCompare(y.month)))
+    }
+    const invSeries = groupByKey(invRecords, 'ファンド名', '年月', '評価額')
+    const dcSeries  = groupByKey(dcRecords,  '運用機関',   '年月', '評価額')
+
+    // 全シリーズに登場する月から連続した月レンジを作る
+    const allMonths = [...depSeries, ...invSeries, ...dcSeries]
+      .flatMap(recs => recs.map(r => r.month))
+    let months = []
+    if (allMonths.length > 0) {
+      const sortedMonths = [...allMonths].sort()
+      let [y, m] = sortedMonths[0].split('-').map(Number)
+      const [ey, em] = sortedMonths[sortedMonths.length - 1].split('-').map(Number)
+      while (y < ey || (y === ey && m <= em)) {
+        months.push(`${y}-${String(m).padStart(2, '0')}`)
+        m++
+        if (m > 12) { m = 1; y++ }
+      }
+    }
+
+    // 月末断面（forward-fill）で各シリーズの合計を月ごとに積み上げる
+    const monthEndTotal = (series) => {
+      const totals = Object.fromEntries(months.map(m => [m, 0]))
+      series.forEach(recs => {
+        let idx = 0
+        let current = null
+        months.forEach(m => {
+          while (idx < recs.length && recs[idx].month <= m) {
+            current = recs[idx].value
+            idx++
+          }
+          if (current != null) totals[m] += current
+        })
+      })
+      return totals
+    }
+    const depM = monthEndTotal(depSeries)
+    const invM = monthEndTotal(invSeries)
+    const dcM  = monthEndTotal(dcSeries)
+
+    const bar = months.map(m => ({
       month:    m.replace('-', '/'),
       預金:     Math.round((depM[m] || 0) / 10000),
       投資信託: Math.round((invM[m] || 0) / 10000),
