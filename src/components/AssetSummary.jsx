@@ -128,10 +128,6 @@ export default function AssetSummary() {
 
         let total = 0
         insurances.forEach(ins => {
-          const startYear = parseInt((ins.startMonth || '').split(/[-/]/)[0])
-          if (!startYear) return
-          const policyYear = currentYear - startYear
-
           const svs = ins.surrenderValues
             .map(s => ({
               year:   Number(s.year)                  || 0,
@@ -143,8 +139,8 @@ export default function AssetSummary() {
 
           if (!svs.length) return
 
-          // 経過年数以下で最大の解約年度、なければ最初の行
-          const eligible = svs.filter(s => s.year <= policyYear)
+          // 解約年度（西暦）が現在年以下で最大の行、なければ最初の行
+          const eligible = svs.filter(s => s.year <= currentYear)
           const sv = eligible.length > 0 ? eligible[eligible.length - 1] : svs[0]
           total += (sv.annual > 0 ? sv.annual : sv.lump) * usdJpy
         })
