@@ -83,6 +83,7 @@ export default function AssetSummary() {
   const [loadMsg,    setLoadMsg]    = useState('')
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveMsg,    setSaveMsg]    = useState('')
+  const [showTotal,  setShowTotal]  = useState(false)
 
   useEffect(() => { if (isGasReady()) handleLoad() }, [])
 
@@ -348,7 +349,19 @@ export default function AssetSummary() {
         <div className="asset-grand-card">
           <div className="asset-grand-top">
             <span className="asset-grand-label">総資産合計</span>
-            <span className="asset-grand-value">¥{grandTotal.toLocaleString()}</span>
+            <span className="asset-grand-value-row">
+              <span className="asset-grand-value">
+                {showTotal ? `¥${grandTotal.toLocaleString()}` : '¥ ••••••••'}
+              </span>
+              <button
+                className="asset-grand-eye"
+                onClick={() => setShowTotal(p => !p)}
+                aria-label={showTotal ? '金額を隠す' : '金額を表示'}
+                title={showTotal ? '金額を隠す' : '金額を表示'}
+              >
+                {showTotal ? '🙈' : '👁'}
+              </button>
+            </span>
           </div>
           <div className="asset-grand-breakdown">
             {[
@@ -360,7 +373,7 @@ export default function AssetSummary() {
               <div key={name} className="asset-grand-item">
                 <span className="asset-grand-dot" style={{ background: PIE_COLORS[name] }} />
                 <span className="asset-grand-name">{name}</span>
-                <span className="asset-grand-amt">{fmt3(val)}</span>
+                <span className="asset-grand-amt">{showTotal ? fmt3(val) : '••••'}</span>
               </div>
             ))}
           </div>

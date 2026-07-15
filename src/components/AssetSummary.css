@@ -30,6 +30,12 @@
   opacity: 0.75;
 }
 
+.asset-grand-value-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .asset-grand-value {
   font-size: 2rem;
   font-weight: 800;
@@ -37,6 +43,24 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
+
+.asset-grand-eye {
+  background: rgba(255,255,255,0.14);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  width: 30px;
+  height: 30px;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.asset-grand-eye:hover { background: rgba(255,255,255,0.26); }
 
 .asset-grand-breakdown {
   display: flex;
