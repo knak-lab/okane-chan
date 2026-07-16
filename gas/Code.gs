@@ -21,9 +21,15 @@ const HDR = [
 //  ルーティング
 // ─────────────────────────────────────────
 
+function isAuthorized(token) {
+  const expected = PropertiesService.getScriptProperties().getProperty('API_TOKEN')
+  return Boolean(expected) && token === expected
+}
+
 function doGet(e) {
   const action = e.parameter.action || ''
   const month  = e.parameter.month  || ''
+  if (!isAuthorized(e.parameter.token)) return err('Unauthorized')
   try {
     switch (action) {
       case 'getTransactions':   return ok(getTransactions(month))
@@ -47,6 +53,7 @@ function doPost(e) {
   try {
     const raw  = e.parameter.data || e.postData.contents
     const body = JSON.parse(raw)
+    if (!isAuthorized(body.token)) return err('Unauthorized')
     switch (body.action) {
       case 'saveTransactions':   return ok(saveTransactions(body.transactions))
       case 'clearMonth':         return ok(clearMonth(body.month))
