@@ -11,8 +11,8 @@ import './Dashboard.css'
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
 
 function getFiscalPriorMonths(selectedMonth, availableMonths) {
-  const [year, month] = selectedMonth.split('-').map(Number)
-  const fiscalStart = month >= 4 ? `${year}-04` : `${year - 1}-04`
+  const year = selectedMonth.split('-')[0]
+  const fiscalStart = `${year}-01`
   return availableMonths.filter(m => m >= fiscalStart && m < selectedMonth)
 }
 
@@ -157,18 +157,20 @@ export default function Dashboard({ transactions, onLoad }) {
     const monthIdx = parseInt(selectedMonth.split('-')[1], 10) - 1
     return Object.fromEntries(
       BUCKET_CONFIG.map(b => {
+        const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
         const vals = annualPlan[`支出_${b.name}`]
-        // 年間バケット：4月の値を年間予算として使用
-        const idx = ANNUAL_BUCKET_NAMES.includes(b.name) ? 3 : monthIdx
-        return [b.name, vals?.[idx] ?? b.budget]
+        // 年間バケット：年間タブに入力された値（idx=3）を年間予算として使用。未設定なら0円扱い
+        const idx = isAnnual ? 3 : monthIdx
+        const fallback = isAnnual ? 0 : b.budget
+        return [b.name, vals?.[idx] ?? fallback]
       })
     )
   }, [annualPlan, selectedMonth])
 
   const bucketData = useMemo(() => {
     return BUCKET_CONFIG.map((b) => {
-      const budget = effectiveBudgets[b.name] ?? b.budget
-      // 年間バケットは4月〜当月の累計、月次バケットは当月のみ
+      const budget = effectiveBudgets[b.name] ?? (ANNUAL_BUCKET_NAMES.includes(b.name) ? 0 : b.budget)
+      // 年間バケットは1月〜当月の累計、月次バケットは当月のみ
       const src = ANNUAL_BUCKET_NAMES.includes(b.name) ? annualBillable : billable
       const actual = src
         .filter((t) => b.categories.includes(t.category))

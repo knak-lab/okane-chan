@@ -83,16 +83,18 @@ export default function AccView() {
     const monthIdx = parseInt(selectedMonth.split('-')[1], 10) - 1
     return Object.fromEntries(
       BUCKET_CONFIG.map(b => {
+        const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
         const vals = annualPlan[`支出_${b.name}`]
-        const idx = ANNUAL_BUCKET_NAMES.includes(b.name) ? 3 : monthIdx
-        return [b.name, vals?.[idx] ?? b.budget]
+        const idx = isAnnual ? 3 : monthIdx
+        const fallback = isAnnual ? 0 : b.budget
+        return [b.name, vals?.[idx] ?? fallback]
       })
     )
   }, [annualPlan, selectedMonth])
 
   const bucketData = useMemo(() => {
     return BUCKET_CONFIG.map(b => {
-      const budget = effectiveBudgets[b.name] ?? b.budget
+      const budget = effectiveBudgets[b.name] ?? (ANNUAL_BUCKET_NAMES.includes(b.name) ? 0 : b.budget)
       const src = ANNUAL_BUCKET_NAMES.includes(b.name) ? annualBillable : billable
       const actual = src
         .filter(t => b.categories.includes(t.category))
