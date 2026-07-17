@@ -63,6 +63,7 @@ function addDerived(t) {
 
 export const gasApi = {
   getMonths: () => get('getMonths'),
+  getLastImportedAt: () => get('getLastImportedAt'),
 
   getTransactions: async (month) => {
     const r = await get('getTransactions', { month })

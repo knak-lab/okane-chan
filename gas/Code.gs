@@ -42,6 +42,7 @@ function doGet(e) {
       case 'getInvestmentFunds':   return ok(getInvestmentFunds())
       case 'getDCAccounts':        return ok(getDCAccounts())
       case 'getPensionData':       return ok(getPensionData())
+      case 'getLastImportedAt':    return ok(getLastImportedAt())
       default:                     return err('Unknown action: ' + action)
     }
   } catch (ex) {
@@ -223,7 +224,21 @@ function saveTransactions(transactions) {
   const months = [...new Set(
     transactions.map(t => extractMonth(String(t['取引日'] || ''))).filter(Boolean)
   )]
+  recordImportTimestamp()
   return { saved: transactions.length, inserted: toInsert.length, updated, months }
+}
+
+// ─────────────────────────────────────────
+//  PayPay取込更新日時
+// ─────────────────────────────────────────
+
+function recordImportTimestamp() {
+  const formatted = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm')
+  PropertiesService.getScriptProperties().setProperty('lastImportedAt', formatted)
+}
+
+function getLastImportedAt() {
+  return { lastImportedAt: PropertiesService.getScriptProperties().getProperty('lastImportedAt') || '' }
 }
 
 // ─────────────────────────────────────────

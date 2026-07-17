@@ -60,6 +60,13 @@
   color: #94A3B8;
 }
 
+.acc-import-at {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #CBD5E1;
+  white-space: nowrap;
+}
+
 /* ── Table ── */
 .acc-table {
   width: 100%;

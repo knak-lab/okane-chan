@@ -30,6 +30,7 @@ export default function AccView() {
   const [status, setStatus]               = useState('idle')
   const [commonAccounts, setCommonAccounts] = useState([])
   const [openBucket, setOpenBucket] = useState(null)
+  const [lastImportedAt, setLastImportedAt] = useState('')
 
   const isCumulative = selectedMonth === CUMULATIVE
   // 「累計」選択時は最新の実月（当月）を基準にJan〜当月のデータを扱う
@@ -45,6 +46,7 @@ export default function AccView() {
       setAvailableMonths(ms)
       if (ms.length > 0) setSelected(ms[0])
     })
+    gasApi.getLastImportedAt().then(r => setLastImportedAt(r.lastImportedAt || '')).catch(() => {})
   }, [])
 
   // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）
@@ -210,6 +212,9 @@ export default function AccView() {
             <span className="acc-hesokin-period">{cumulativePeriodLabel}</span>
           )}
           {status === 'loading' && <span className="acc-loading">読込中…</span>}
+          {lastImportedAt && (
+            <span className="acc-import-at">PayPay取込更新日：{lastImportedAt}</span>
+          )}
         </div>
 
         <table className="acc-table">
