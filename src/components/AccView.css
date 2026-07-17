@@ -250,6 +250,67 @@
   padding: 0 2px;
 }
 
+/* ── バケット行クリック展開 ── */
+.acc-row--expandable {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.acc-row--expandable:hover td { background: rgba(244, 121, 32, 0.04); }
+.acc-row--open td { background: rgba(244, 121, 32, 0.07); }
+
+.acc-expand-icon {
+  display: inline-block;
+  width: 14px;
+  font-size: 0.7rem;
+  color: #CBD5E1;
+  margin-right: 4px;
+  user-select: none;
+}
+
+/* ── 明細パネル ── */
+.acc-detail-row-wrap td { padding: 0; border-bottom: 1px solid #E2E8F0; }
+
+.acc-detail-panel {
+  background: #F8FAFC;
+  padding: 10px 16px 14px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.acc-detail-empty {
+  color: #CBD5E1;
+  font-size: 0.82rem;
+  padding: 8px 0;
+}
+
+.acc-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.acc-detail-table th {
+  text-align: left;
+  padding: 5px 8px;
+  color: #94A3B8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.acc-detail-table td {
+  padding: 7px 8px;
+  color: #1A1F36;
+  border-bottom: 1px solid #F1F5F9;
+  vertical-align: middle;
+}
+
+.acc-detail-date   { white-space: nowrap; color: #94A3B8; font-size: 0.78rem; width: 90px; }
+.acc-detail-desc   { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acc-detail-amount { white-space: nowrap; width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
+
 .acc-common-type {
   font-size: 0.68rem;
   color: #94A3B8;

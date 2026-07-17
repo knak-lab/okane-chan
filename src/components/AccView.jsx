@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, Fragment } from 'react'
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import OsaifuInput from './OsaifuInput'
@@ -12,6 +12,14 @@ function getFiscalPriorMonths(selectedMonth, availableMonths) {
   return availableMonths.filter(m => m >= fiscalStart && m < selectedMonth)
 }
 
+// 今年度（1月〜当月）の月リストをデータの有無に関わらず生成
+function currentFiscalYearMonths() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  return Array.from({ length: month }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+}
+
 export default function AccView() {
   const [transactions, setTransactions]   = useState([])
   const [annualPlan, setAnnualPlan]       = useState(null)
@@ -20,20 +28,25 @@ export default function AccView() {
   const [selectedMonth, setSelected]      = useState('')
   const [status, setStatus]               = useState('idle')
   const [commonAccounts, setCommonAccounts] = useState([])
+  const [openBucket, setOpenBucket] = useState(null)
 
   // 月リスト取得（初回のみ）
   useEffect(() => {
     if (!isGasReady()) return
     gasApi.getMonths().then(r => {
-      const ms = r.months || []
+      const ms = [...new Set([...(r.months || []), ...currentFiscalYearMonths()])]
+        .sort()
+        .reverse()
       setAvailableMonths(ms)
       if (ms.length > 0) setSelected(ms[0])
     })
   }, [])
 
-  // 月が変わるたびにデータ再取得
+  // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）
   useEffect(() => {
     if (!selectedMonth || availableMonths.length === 0) return
+    let cancelled = false
+    setOpenBucket(null)
     setStatus('loading')
     const year = selectedMonth.split('-')[0]
     const priorMonths = getFiscalPriorMonths(selectedMonth, availableMonths)
@@ -44,6 +57,7 @@ export default function AccView() {
       ...priorMonths.map(m => gasApi.getTransactions(m)),
     ])
       .then(([result, planResult, assetResult, ...priorResults]) => {
+        if (cancelled) return
         setTransactions(result.transactions || [])
         setAnnualPlan(planResult.plan || null)
         setAnnualTx([
@@ -65,7 +79,8 @@ export default function AccView() {
         )
         setStatus('done')
       })
-      .catch(() => setStatus('error'))
+      .catch(() => { if (!cancelled) setStatus('error') })
+    return () => { cancelled = true }
   }, [selectedMonth, availableMonths])
 
   const billable = useMemo(
@@ -186,32 +201,76 @@ export default function AccView() {
                 <span className="acc-pct">{Math.round(midData.ratio * 100)}%</span>
               </td>
             </tr>
-            {bucketData.filter(b => !['家賃', '妊活'].includes(b.name)).map(b => (
-              <tr key={b.name} className="acc-row">
-                <td className="acc-td-name">
-                  <span className="acc-dot" style={{ background: b.color }} />
-                  {b.name}
-                  <span className={`acc-period-tag ${ANNUAL_BUCKET_NAMES.includes(b.name) ? 'acc-period-tag--annual' : 'acc-period-tag--monthly'}`}>
-                    {ANNUAL_BUCKET_NAMES.includes(b.name) ? '年間' : '月間'}
-                  </span>
-                </td>
-                <td className={`acc-td-r ${b.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
-                  {b.remaining < 0 ? '-' : ''}{fmt(Math.abs(b.remaining))}
-                </td>
-                <td className="acc-td-bar">
-                  <div className="acc-track">
-                    <div
-                      className="acc-fill"
-                      style={{
-                        width: `${Math.min(b.ratio * 100, 100)}%`,
-                        background: b.ratio > 1 ? '#f85149' : b.color,
-                      }}
-                    />
-                  </div>
-                  <span className="acc-pct">{Math.round(b.ratio * 100)}%</span>
-                </td>
-              </tr>
-            ))}
+            {bucketData.filter(b => !['家賃', '妊活'].includes(b.name)).map(b => {
+              const isOpen = openBucket === b.name
+              const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
+              const detailSrc = isAnnual ? annualBillable : billable
+              const detail = detailSrc
+                .filter(t => b.categories.includes(t.category))
+                .sort((x, y) => (x.date < y.date ? 1 : -1))
+              return (
+                <Fragment key={b.name}>
+                  <tr
+                    className={`acc-row acc-row--expandable ${isOpen ? 'acc-row--open' : ''}`}
+                    onClick={() => setOpenBucket(isOpen ? null : b.name)}
+                  >
+                    <td className="acc-td-name">
+                      <span className="acc-expand-icon">{isOpen ? '▾' : '▸'}</span>
+                      <span className="acc-dot" style={{ background: b.color }} />
+                      {b.name}
+                      <span className={`acc-period-tag ${isAnnual ? 'acc-period-tag--annual' : 'acc-period-tag--monthly'}`}>
+                        {isAnnual ? '年間' : '月間'}
+                      </span>
+                    </td>
+                    <td className={`acc-td-r ${b.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
+                      {b.remaining < 0 ? '-' : ''}{fmt(Math.abs(b.remaining))}
+                    </td>
+                    <td className="acc-td-bar">
+                      <div className="acc-track">
+                        <div
+                          className="acc-fill"
+                          style={{
+                            width: `${Math.min(b.ratio * 100, 100)}%`,
+                            background: b.ratio > 1 ? '#f85149' : b.color,
+                          }}
+                        />
+                      </div>
+                      <span className="acc-pct">{Math.round(b.ratio * 100)}%</span>
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="acc-detail-row-wrap">
+                      <td colSpan={3} className="acc-detail-cell">
+                        <div className="acc-detail-panel">
+                          {detail.length === 0 ? (
+                            <p className="acc-detail-empty">該当する取引がありません</p>
+                          ) : (
+                            <table className="acc-detail-table">
+                              <thead>
+                                <tr>
+                                  <th>日付</th>
+                                  <th>決済先</th>
+                                  <th className="acc-th-r">金額</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {detail.map(t => (
+                                  <tr key={t.id}>
+                                    <td className="acc-detail-date">{t.date}</td>
+                                    <td className="acc-detail-desc">{t.description}</td>
+                                    <td className="acc-detail-amount">¥{t.amount.toLocaleString()}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       </div>
