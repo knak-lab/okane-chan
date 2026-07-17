@@ -5,6 +5,7 @@ import OsaifuInput from './OsaifuInput'
 import './AccView.css'
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
+const CUMULATIVE = '累計'
 
 function getFiscalPriorMonths(selectedMonth, availableMonths) {
   const year = selectedMonth.split('-')[0]
@@ -30,6 +31,10 @@ export default function AccView() {
   const [commonAccounts, setCommonAccounts] = useState([])
   const [openBucket, setOpenBucket] = useState(null)
 
+  const isCumulative = selectedMonth === CUMULATIVE
+  // 「累計」選択時は最新の実月（当月）を基準にJan〜当月のデータを扱う
+  const displayMonth = isCumulative ? availableMonths[0] : selectedMonth
+
   // 月リスト取得（初回のみ）
   useEffect(() => {
     if (!isGasReady()) return
@@ -44,14 +49,13 @@ export default function AccView() {
 
   // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）
   useEffect(() => {
-    if (!selectedMonth || availableMonths.length === 0) return
+    if (!displayMonth || availableMonths.length === 0) return
     let cancelled = false
-    setOpenBucket(null)
     setStatus('loading')
-    const year = selectedMonth.split('-')[0]
-    const priorMonths = getFiscalPriorMonths(selectedMonth, availableMonths)
+    const year = displayMonth.split('-')[0]
+    const priorMonths = getFiscalPriorMonths(displayMonth, availableMonths)
     Promise.all([
-      gasApi.getTransactions(selectedMonth),
+      gasApi.getTransactions(displayMonth),
       gasApi.getAnnualPlan(year),
       gasApi.getAssets(),
       ...priorMonths.map(m => gasApi.getTransactions(m)),
@@ -81,7 +85,10 @@ export default function AccView() {
       })
       .catch(() => { if (!cancelled) setStatus('error') })
     return () => { cancelled = true }
-  }, [selectedMonth, availableMonths])
+  }, [displayMonth, availableMonths])
+
+  // 月/累計の切替時は開いていた明細を閉じる
+  useEffect(() => { setOpenBucket(null) }, [selectedMonth])
 
   const billable = useMemo(
     () => transactions.filter(t => t.category !== '対象外'),
@@ -94,8 +101,8 @@ export default function AccView() {
   )
 
   const effectiveBudgets = useMemo(() => {
-    if (!annualPlan || !selectedMonth) return {}
-    const monthIdx = parseInt(selectedMonth.split('-')[1], 10) - 1
+    if (!annualPlan || !displayMonth) return {}
+    const monthIdx = parseInt(displayMonth.split('-')[1], 10) - 1
     return Object.fromEntries(
       BUCKET_CONFIG.map(b => {
         const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
@@ -105,19 +112,40 @@ export default function AccView() {
         return [b.name, vals?.[idx] ?? fallback]
       })
     )
-  }, [annualPlan, selectedMonth])
+  }, [annualPlan, displayMonth])
+
+  // 「累計」選択時、月間バケットの予算をJan〜当月の月別予算合計に置き換える
+  const cumulativeBucketBudgets = useMemo(() => {
+    if (!isCumulative || !displayMonth) return {}
+    const fiscalMonths = [...getFiscalPriorMonths(displayMonth, availableMonths), displayMonth].filter(Boolean)
+    const sums = {}
+    for (const b of BUCKET_CONFIG) {
+      if (ANNUAL_BUCKET_NAMES.includes(b.name)) continue
+      sums[b.name] = fiscalMonths.reduce((total, month) => {
+        const monthIdx = parseInt(month.split('-')[1], 10) - 1
+        const budget = annualPlan ? (annualPlan[`支出_${b.name}`]?.[monthIdx] ?? b.budget) : b.budget
+        return total + budget
+      }, 0)
+    }
+    return sums
+  }, [isCumulative, displayMonth, availableMonths, annualPlan])
 
   const bucketData = useMemo(() => {
     return BUCKET_CONFIG.map(b => {
-      const budget = effectiveBudgets[b.name] ?? (ANNUAL_BUCKET_NAMES.includes(b.name) ? 0 : b.budget)
-      const src = ANNUAL_BUCKET_NAMES.includes(b.name) ? annualBillable : billable
+      const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
+      const budget = isAnnual
+        ? (effectiveBudgets[b.name] ?? 0)
+        : isCumulative
+          ? (cumulativeBucketBudgets[b.name] ?? 0)
+          : (effectiveBudgets[b.name] ?? b.budget)
+      const src = (isAnnual || isCumulative) ? annualBillable : billable
       const actual = src
         .filter(t => b.categories.includes(t.category))
         .reduce((s, t) => s + t.amount, 0)
       const ratio = budget > 0 ? actual / budget : 0
       return { ...b, budget, actual, ratio, remaining: budget - actual }
     })
-  }, [billable, annualBillable, effectiveBudgets])
+  }, [billable, annualBillable, effectiveBudgets, isCumulative, cumulativeBucketBudgets])
 
   const midData = useMemo(() => {
     const rows = bucketData.filter(b => ['安心ライフ費', '暮らしの彩り費'].includes(b.name))
@@ -130,7 +158,7 @@ export default function AccView() {
 
   const cumulativeMidData = useMemo(() => {
     const midBuckets = BUCKET_CONFIG.filter(b => ['安心ライフ費', '暮らしの彩り費'].includes(b.name))
-    const fiscalMonths = [...getFiscalPriorMonths(selectedMonth, availableMonths), selectedMonth].filter(Boolean)
+    const fiscalMonths = [...getFiscalPriorMonths(displayMonth, availableMonths), displayMonth].filter(Boolean)
     let totalBudget = 0
     let totalActual = 0
     for (const month of fiscalMonths) {
@@ -150,7 +178,14 @@ export default function AccView() {
     const remaining = totalBudget - totalActual
     const ratio = totalBudget > 0 ? totalActual / totalBudget : 0
     return { budget: totalBudget, actual: totalActual, remaining, ratio, months: fiscalMonths }
-  }, [annualPlan, selectedMonth, availableMonths, annualTransactions])
+  }, [annualPlan, displayMonth, availableMonths, annualTransactions])
+
+  const cumulativePeriodLabel = useMemo(() => {
+    const ms = [...cumulativeMidData.months].sort()
+    return ms.length > 0
+      ? `${parseInt(ms[0].split('-')[1], 10)}〜${parseInt(ms[ms.length - 1].split('-')[1], 10)}月累計`
+      : ''
+  }, [cumulativeMidData.months])
 
   return (
     <div className="acc-view">
@@ -165,10 +200,14 @@ export default function AccView() {
               value={selectedMonth}
               onChange={e => setSelected(e.target.value)}
             >
+              <option value={CUMULATIVE}>{CUMULATIVE}</option>
               {availableMonths.map(m => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+          )}
+          {isCumulative && cumulativePeriodLabel && (
+            <span className="acc-hesokin-period">{cumulativePeriodLabel}</span>
           )}
           {status === 'loading' && <span className="acc-loading">読込中…</span>}
         </div>
@@ -204,7 +243,7 @@ export default function AccView() {
             {bucketData.filter(b => !['家賃', '妊活'].includes(b.name)).map(b => {
               const isOpen = openBucket === b.name
               const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
-              const detailSrc = isAnnual ? annualBillable : billable
+              const detailSrc = (isAnnual || isCumulative) ? annualBillable : billable
               const detail = detailSrc
                 .filter(t => b.categories.includes(t.category))
                 .sort((x, y) => (x.date < y.date ? 1 : -1))
@@ -276,26 +315,18 @@ export default function AccView() {
       </div>
 
       {/* へそくり */}
-      {(() => {
-        const ms = [...cumulativeMidData.months].sort()
-        const periodLabel = ms.length > 0
-          ? `${parseInt(ms[0].split('-')[1], 10)}〜${parseInt(ms[ms.length - 1].split('-')[1], 10)}月累計`
-          : ''
-        return (
-          <div className="acc-card acc-card--hesokin">
-            <div className="acc-card-header">
-              <p className="acc-card-title">へそくり</p>
-              {periodLabel && <span className="acc-hesokin-period">{periodLabel}</span>}
-            </div>
-            <div className="acc-hesokin-body">
-              <span className={`acc-hesokin-amount ${cumulativeMidData.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
-                {cumulativeMidData.remaining < 0 ? '-' : ''}{fmt(Math.abs(cumulativeMidData.remaining))}
-              </span>
-              <span className="acc-hesokin-label">安心＋暮らし プール金</span>
-            </div>
-          </div>
-        )
-      })()}
+      <div className="acc-card acc-card--hesokin">
+        <div className="acc-card-header">
+          <p className="acc-card-title">へそくり</p>
+          {cumulativePeriodLabel && <span className="acc-hesokin-period">{cumulativePeriodLabel}</span>}
+        </div>
+        <div className="acc-hesokin-body">
+          <span className={`acc-hesokin-amount ${cumulativeMidData.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
+            {cumulativeMidData.remaining < 0 ? '-' : ''}{fmt(Math.abs(cumulativeMidData.remaining))}
+          </span>
+          <span className="acc-hesokin-label">安心＋暮らし プール金</span>
+        </div>
+      </div>
 
       {/* 共通口座 */}
       {commonAccounts.length > 0 && (() => {
