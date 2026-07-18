@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, Fragment } from 'react'
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import OsaifuInput from './OsaifuInput'
+import BucketYearChart from './BucketYearChart'
 import './AccView.css'
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
@@ -191,6 +192,9 @@ export default function AccView() {
 
   return (
     <div className="acc-view">
+
+      {/* 年間推移グラフ */}
+      <BucketYearChart />
 
       {/* 支払サマリ（簡易） */}
       <div className="acc-card">
