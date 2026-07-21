@@ -335,6 +335,10 @@ export default function AccView() {
           </span>
           <span className="acc-hesokin-label">安心＋暮らし プール金</span>
         </div>
+        <div className="acc-hesokin-sub">
+          <span>累計予算 {fmt(cumulativeMidData.budget)}</span>
+          <span>累計実績 {fmt(cumulativeMidData.actual)}</span>
+        </div>
       </div>
 
       {/* 共通口座 */}

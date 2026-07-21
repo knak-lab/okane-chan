@@ -247,6 +247,15 @@
   font-weight: 500;
 }
 
+.acc-hesokin-sub {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #64748B;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── セクションラベル ── */
 .acc-section-label {
   font-size: 0.68rem;
