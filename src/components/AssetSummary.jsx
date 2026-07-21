@@ -96,7 +96,7 @@ export default function AssetSummary() {
         gasApi.getInvestmentFunds(),
         gasApi.getDCAccounts(),
         gasApi.getInsurances(),
-        fetch('https://api.frankfurter.app/latest?from=USD&to=JPY').then(r => r.json()),
+        fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=JPY').then(r => r.json()),
       ])
 
       // 口座データ（'預金' → '普通預金' マイグレーション）

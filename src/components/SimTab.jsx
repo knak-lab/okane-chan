@@ -195,7 +195,7 @@ export default function SimTab() {
         gasApi.getMonths(),
         gasApi.getPensionData(),
         gasApi.getInsurances(),
-        fetch('https://api.frankfurter.app/latest?from=USD&to=JPY').then(r => r.json()).catch(() => null),
+        fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=JPY').then(r => r.json()).catch(() => null),
       ])
       const [assetsRes, fundsRes, dcRes, monthsRes, pensionRes, insRes, rateRes] =
         settled.map(r => r.status === 'fulfilled' ? r.value : null)

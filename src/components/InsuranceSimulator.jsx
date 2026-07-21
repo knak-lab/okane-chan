@@ -101,7 +101,7 @@ export default function InsuranceSimulator() {
   const fetchRate = async () => {
     setFetchingRate(true); setRateMsg('')
     try {
-      const res  = await fetch('https://api.frankfurter.app/latest?from=USD&to=JPY')
+      const res  = await fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=JPY')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       const jpy  = data.rates?.JPY
