@@ -297,35 +297,37 @@ export default function Dashboard({ transactions, onLoad }) {
         <div className="chart-card chart-bar">
           <p className="chart-title">予算 vs 実績</p>
           {hasData ? (
-            <ResponsiveContainer width="100%" height={210}>
-              <BarChart data={groupedBucketData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                <XAxis
-                  dataKey="short"
-                  tick={{ fill: '#94A3B8', fontSize: 11 }}
-                  axisLine={{ stroke: '#E2E8F0' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  tickFormatter={(v) => `${(v / 10000).toFixed(0)}万`}
-                  tick={{ fill: '#94A3B8', fontSize: 10 }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                />
-                <Tooltip content={<BarTip />} cursor={{ fill: 'rgba(244,121,32,0.05)' }} />
-                <Legend
-                  formatter={(v) => <span style={{ color: '#64748B', fontSize: 11 }}>{v}</span>}
-                  wrapperStyle={{ paddingTop: 8 }}
-                />
-                <Bar dataKey="budget" name="予算" fill="#E2E8F0" radius={[3, 3, 0, 0]} maxBarSize={28} />
-                <Bar dataKey="actual" name="実績" radius={[3, 3, 0, 0]} maxBarSize={28}>
-                  {groupedBucketData.map((b) => (
-                    <Cell key={b.name} fill={b.ratio > 1 ? '#f85149' : b.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <>
+              <div className="chart-bar-legend">
+                <span><i className="dot" style={{ background: '#E2E8F0' }} />予算</span>
+                <span><i className="dot" style={{ background: '#64748B' }} />実績</span>
+              </div>
+              <div className="chart-bar-group">
+                {groupedBucketData.map((b) => (
+                  <div key={b.name} className="chart-bar-item">
+                    <p className="chart-bar-item-title">{b.name}</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={[b]} margin={{ top: 8, right: 4, left: 0, bottom: 0 }} barGap={4}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                        <XAxis dataKey="short" tick={false} axisLine={{ stroke: '#E2E8F0' }} tickLine={false} />
+                        <YAxis
+                          tickFormatter={(v) => `${(v / 10000).toFixed(0)}万`}
+                          tick={{ fill: '#94A3B8', fontSize: 10 }}
+                          axisLine={false}
+                          tickLine={false}
+                          width={36}
+                        />
+                        <Tooltip content={<BarTip />} cursor={{ fill: 'rgba(244,121,32,0.05)' }} />
+                        <Bar dataKey="budget" name="予算" fill="#E2E8F0" radius={[3, 3, 0, 0]} maxBarSize={48} />
+                        <Bar dataKey="actual" name="実績" radius={[3, 3, 0, 0]} maxBarSize={48}>
+                          <Cell fill={b.ratio > 1 ? '#f85149' : b.color} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="no-data">CSVをアップロードするとグラフが表示されます</div>
           )}

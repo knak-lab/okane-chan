@@ -146,6 +146,34 @@
   margin-bottom: 14px;
 }
 
+.chart-bar-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 4px;
+  margin-top: -6px;
+}
+
+.chart-bar-legend span {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  color: #64748B;
+}
+
+.chart-bar-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.chart-bar-item-title {
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
 .no-data {
   height: 210px;
   display: flex;
@@ -429,6 +457,8 @@
   }
   .kpi-card:first-child { grid-column: span 2; }
   .kpi-value { font-size: 1.4rem; }
+
+  .chart-bar-group { grid-template-columns: 1fr; }
   .kpi-card { padding: 14px 16px; }
 
   .charts-row { grid-template-columns: 1fr; }
