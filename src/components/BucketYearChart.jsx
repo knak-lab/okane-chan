@@ -142,23 +142,37 @@ export default function BucketYearChart() {
           <CartesianGrid stroke="#e1e0d9" vertical={false} />
           <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} />
           <YAxis
+            yAxisId="left"
             tick={{ fontSize: 10, fill: '#898781' }}
             axisLine={false}
             tickLine={false}
             width={40}
             tickFormatter={v => `${Math.round(v / 10000)}万`}
           />
+          {isAnnualOnly && (
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              tick={{ fontSize: 10, fill: COLOR_BUDGET }}
+              axisLine={false}
+              tickLine={false}
+              width={40}
+              tickFormatter={v => `${Math.round(v / 10000)}万`}
+            />
+          )}
           <Tooltip
             formatter={(v) => v == null ? '—' : yen(v)}
             contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0' }}
           />
           <Legend iconType="plainline" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-          <Bar dataKey="今年度実績" fill={COLOR_ACTUAL} barSize={20} radius={[4, 4, 0, 0]} />
+          <Bar yAxisId="left" dataKey="今年度実績" fill={COLOR_ACTUAL} barSize={20} radius={[4, 4, 0, 0]} />
           <Line
+            yAxisId="left"
             dataKey="前年度実績" stroke={COLOR_PREV} strokeWidth={2}
             strokeDasharray="6 4" dot={{ r: 4 }} connectNulls
           />
           <Line
+            yAxisId={isAnnualOnly ? 'right' : 'left'}
             dataKey="今年度予算" name={isAnnualOnly ? '予算残高' : '今年度予算'}
             stroke={COLOR_BUDGET} strokeWidth={2}
             strokeDasharray="2 3" dot={{ r: 4 }} connectNulls
