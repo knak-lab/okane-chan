@@ -7,6 +7,7 @@ import { gasApi, isGasReady } from '../utils/gasApi'
 
 const TOTAL = '合計'
 const MID = '安心＋暮らし'
+const MID2 = 'ときめき＋冒険'
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
 
 // 3系統固定色（バケット切替に依存しないエンティティ色）
@@ -50,8 +51,12 @@ export default function BucketYearChart() {
   const targetBuckets = useMemo(() => {
     if (bucketName === TOTAL) return BUCKET_CONFIG.filter(b => b.name !== '妊活')
     if (bucketName === MID) return BUCKET_CONFIG.filter(b => ['安心ライフ費', '暮らしの彩り費'].includes(b.name))
+    if (bucketName === MID2) return BUCKET_CONFIG.filter(b => ['ときめきチョイス費', '冒険予算'].includes(b.name))
     return BUCKET_CONFIG.filter(b => b.name === bucketName)
   }, [bucketName])
+
+  // 選択中のバケットが全て年間予算バケットか（ときめき/冒険/妊活単体・ときめき+冒険の組み合わせ時）
+  const isAnnualOnly = targetBuckets.length > 0 && targetBuckets.every(b => ANNUAL_BUCKET_NAMES.includes(b.name))
 
   const categories = useMemo(
     () => targetBuckets.flatMap(b => b.categories),
@@ -72,8 +77,22 @@ export default function BucketYearChart() {
     return sums
   }, [billable, categories, currentYear, prevYear])
 
-  // 今年度の月別予算合計（年間バケットは年間総額÷12で月按分）
+  // 今年度の月別予算合計（年間バケットは年間総額÷12で月按分）。
+  // 選択中バケットが全て年間予算（ときめき/冒険/妊活）の場合は、月按分ではなく
+  // 「総額 - 当月までの累計実績」＝残高を表示する。
   const budgetByMonth = useMemo(() => {
+    if (isAnnualOnly) {
+      const annualTotal = targetBuckets.reduce(
+        (s, b) => s + (annualPlan?.[`支出_${b.name}`]?.[3] ?? 0), 0
+      )
+      const arr = Array(12).fill(null)
+      let cumulative = 0
+      for (let i = 0; i < 12 && i < currentMonth; i++) {
+        cumulative += actualByYearMonth[currentYear][i]
+        arr[i] = annualTotal - cumulative
+      }
+      return arr
+    }
     const arr = Array(12).fill(0)
     for (const b of targetBuckets) {
       const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
@@ -86,7 +105,7 @@ export default function BucketYearChart() {
       }
     }
     return arr
-  }, [annualPlan, targetBuckets])
+  }, [annualPlan, targetBuckets, isAnnualOnly, actualByYearMonth, currentYear, currentMonth])
 
   const chartData = useMemo(() => MONTHS.map(m => ({
     month: `${m}月`,
@@ -106,8 +125,13 @@ export default function BucketYearChart() {
         >
           <option value={TOTAL}>{TOTAL}</option>
           <option value={MID}>{MID}</option>
-          {BUCKET_CONFIG.map(b => (
-            <option key={b.name} value={b.name}>{b.name}</option>
+          {BUCKET_CONFIG.flatMap(b => (
+            b.name === 'ときめきチョイス費'
+              ? [
+                  <option key={MID2} value={MID2}>{MID2}</option>,
+                  <option key={b.name} value={b.name}>{b.name}</option>,
+                ]
+              : [<option key={b.name} value={b.name}>{b.name}</option>]
           ))}
         </select>
         {status === 'loading' && <span className="acc-loading">読込中…</span>}
@@ -135,7 +159,8 @@ export default function BucketYearChart() {
             strokeDasharray="6 4" dot={{ r: 4 }} connectNulls
           />
           <Line
-            dataKey="今年度予算" stroke={COLOR_BUDGET} strokeWidth={2}
+            dataKey="今年度予算" name={isAnnualOnly ? '予算残高' : '今年度予算'}
+            stroke={COLOR_BUDGET} strokeWidth={2}
             strokeDasharray="2 3" dot={{ r: 4 }} connectNulls
           />
         </ComposedChart>
