@@ -189,6 +189,21 @@ export default function Dashboard({ transactions, onLoad }) {
   const remainingBudget = totalBudget - totalSpent
   const budgetPct       = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
 
+  const groupedBucketData = useMemo(() => {
+    const groups = [
+      { name: '安心＋暮らし', short: '安心＋暮らし', color: '#003087', names: ['安心ライフ費', '暮らしの彩り費'] },
+      { name: 'ときめき＋冒険', short: 'ときめき＋冒険', color: '#F47920', names: ['ときめきチョイス費', '冒険予算'] },
+      { name: '妊活', short: '妊活', color: '#EC4899', names: ['妊活'] },
+    ]
+    return groups.map(g => {
+      const rows = bucketData.filter(b => g.names.includes(b.name))
+      const budget = rows.reduce((s, b) => s + b.budget, 0)
+      const actual = rows.reduce((s, b) => s + b.actual, 0)
+      const ratio = budget > 0 ? actual / budget : 0
+      return { name: g.name, short: g.short, color: g.color, budget, actual, ratio, remaining: budget - actual }
+    })
+  }, [bucketData])
+
   const midData = useMemo(() => {
     const MID_NAMES = ['安心ライフ費', '暮らしの彩り費']
     const rows   = bucketData.filter(b => MID_NAMES.includes(b.name))
@@ -283,7 +298,7 @@ export default function Dashboard({ transactions, onLoad }) {
           <p className="chart-title">予算 vs 実績</p>
           {hasData ? (
             <ResponsiveContainer width="100%" height={210}>
-              <BarChart data={bucketData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>
+              <BarChart data={groupedBucketData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} barGap={4}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                 <XAxis
                   dataKey="short"
@@ -305,7 +320,7 @@ export default function Dashboard({ transactions, onLoad }) {
                 />
                 <Bar dataKey="budget" name="予算" fill="#E2E8F0" radius={[3, 3, 0, 0]} maxBarSize={28} />
                 <Bar dataKey="actual" name="実績" radius={[3, 3, 0, 0]} maxBarSize={28}>
-                  {bucketData.map((b) => (
+                  {groupedBucketData.map((b) => (
                     <Cell key={b.name} fill={b.ratio > 1 ? '#f85149' : b.color} />
                   ))}
                 </Bar>
