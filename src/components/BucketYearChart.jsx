@@ -6,6 +6,7 @@ import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 
 const TOTAL = '合計'
+const MID = '安心＋暮らし'
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
 
 // 3系統固定色（バケット切替に依存しないエンティティ色）
@@ -46,10 +47,11 @@ export default function BucketYearChart() {
     [transactions]
   )
 
-  const targetBuckets = useMemo(
-    () => bucketName === TOTAL ? BUCKET_CONFIG : BUCKET_CONFIG.filter(b => b.name === bucketName),
-    [bucketName]
-  )
+  const targetBuckets = useMemo(() => {
+    if (bucketName === TOTAL) return BUCKET_CONFIG.filter(b => b.name !== '妊活')
+    if (bucketName === MID) return BUCKET_CONFIG.filter(b => ['安心ライフ費', '暮らしの彩り費'].includes(b.name))
+    return BUCKET_CONFIG.filter(b => b.name === bucketName)
+  }, [bucketName])
 
   const categories = useMemo(
     () => targetBuckets.flatMap(b => b.categories),
@@ -103,6 +105,7 @@ export default function BucketYearChart() {
           onChange={e => setBucketName(e.target.value)}
         >
           <option value={TOTAL}>{TOTAL}</option>
+          <option value={MID}>{MID}</option>
           {BUCKET_CONFIG.map(b => (
             <option key={b.name} value={b.name}>{b.name}</option>
           ))}
