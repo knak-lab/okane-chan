@@ -20,6 +20,7 @@ const yen = (v) => `¥${Math.round(v).toLocaleString()}`
 export default function BucketYearChart() {
   const [transactions, setTransactions] = useState([])
   const [annualPlan, setAnnualPlan]     = useState(null)
+  const [prevAnnualPlan, setPrevAnnualPlan] = useState(null)
   const [status, setStatus]             = useState('idle')
   const [bucketName, setBucketName]     = useState(TOTAL)
 
@@ -34,14 +35,16 @@ export default function BucketYearChart() {
     Promise.all([
       gasApi.getTransactions(''),
       gasApi.getAnnualPlan(currentYear),
+      gasApi.getAnnualPlan(prevYear),
     ])
-      .then(([txResult, planResult]) => {
+      .then(([txResult, planResult, prevPlanResult]) => {
         setTransactions(txResult.transactions || [])
         setAnnualPlan(planResult.plan || null)
+        setPrevAnnualPlan(prevPlanResult.plan || null)
         setStatus('done')
       })
       .catch(() => setStatus('error'))
-  }, [currentYear])
+  }, [currentYear, prevYear])
 
   const billable = useMemo(
     () => transactions.filter(t => t.category !== '対象外'),
@@ -107,12 +110,28 @@ export default function BucketYearChart() {
     return arr
   }, [annualPlan, targetBuckets, isAnnualOnly, actualByYearMonth, currentYear, currentMonth])
 
+  // 前年度の月別「実績」表示用データ。年間予算バケットのみ選択時は、月別実績ではなく
+  // 前年度の予算残高推移（前年度予算総額 − 前年度当月までの累計実績）を表示する。
+  const prevBudgetByMonth = useMemo(() => {
+    if (!isAnnualOnly) return null
+    const annualTotal = targetBuckets.reduce(
+      (s, b) => s + (prevAnnualPlan?.[`支出_${b.name}`]?.[3] ?? 0), 0
+    )
+    const arr = Array(12).fill(0)
+    let cumulative = 0
+    for (let i = 0; i < 12; i++) {
+      cumulative += actualByYearMonth[prevYear][i]
+      arr[i] = annualTotal - cumulative
+    }
+    return arr
+  }, [prevAnnualPlan, targetBuckets, isAnnualOnly, actualByYearMonth, prevYear])
+
   const chartData = useMemo(() => MONTHS.map(m => ({
     month: `${m}月`,
     今年度実績: m <= currentMonth ? actualByYearMonth[currentYear][m - 1] : null,
-    前年度実績: actualByYearMonth[prevYear][m - 1],
+    前年度実績: isAnnualOnly ? prevBudgetByMonth[m - 1] : actualByYearMonth[prevYear][m - 1],
     今年度予算: budgetByMonth[m - 1],
-  })), [actualByYearMonth, budgetByMonth, currentMonth, currentYear, prevYear])
+  })), [actualByYearMonth, budgetByMonth, prevBudgetByMonth, isAnnualOnly, currentMonth, currentYear, prevYear])
 
   return (
     <div className="acc-card">
@@ -167,8 +186,9 @@ export default function BucketYearChart() {
           <Legend iconType="plainline" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
           <Bar yAxisId="left" dataKey="今年度実績" fill={COLOR_ACTUAL} barSize={20} radius={[4, 4, 0, 0]} />
           <Line
-            yAxisId="left"
-            dataKey="前年度実績" stroke={COLOR_PREV} strokeWidth={2}
+            yAxisId={isAnnualOnly ? 'right' : 'left'}
+            dataKey="前年度実績" name={isAnnualOnly ? '前年度予算残高' : '前年度実績'}
+            stroke={COLOR_PREV} strokeWidth={2}
             strokeDasharray="6 4" dot={{ r: 4 }} connectNulls
           />
           <Line
