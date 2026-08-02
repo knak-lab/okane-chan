@@ -24,6 +24,7 @@ export default function PayPayImport({ transactions, onLoad }) {
   const [ruleSelections, setRuleSelections] = useState({}) // { description: category }
   const [savedRules, setSavedRules]     = useState(loadCustomRules)
   const [showRules, setShowRules]       = useState(false)
+  const [ruleSyncError, setRuleSyncError] = useState('')
   const fileInputRef = useRef(null)
 
   const processFile = useCallback((file) => {
@@ -104,7 +105,7 @@ export default function PayPayImport({ transactions, onLoad }) {
     return Object.values(groups).sort((a, b) => b.total - a.total)
   }, [transactions])
 
-  const handleAddRule = (description) => {
+  const handleAddRule = async (description) => {
     const category = ruleSelections[description] ?? ALL_CATEGORIES[0]
     saveCustomRule(description, category)
     setSavedRules(loadCustomRules())
@@ -114,11 +115,21 @@ export default function PayPayImport({ transactions, onLoad }) {
       const newCat = categorize(row.description)
       return newCat !== row.category ? { ...row, category: newCat } : row
     }))
+    setRuleSyncError('')
+    if (isGasReady()) {
+      try { await gasApi.saveCategoryRules(loadCustomRules()) }
+      catch (e) { setRuleSyncError('スプシ同期エラー: ' + e.message) }
+    }
   }
 
-  const handleDeleteRule = (keyword) => {
+  const handleDeleteRule = async (keyword) => {
     deleteCustomRule(keyword)
     setSavedRules(loadCustomRules())
+    setRuleSyncError('')
+    if (isGasReady()) {
+      try { await gasApi.saveCategoryRules(loadCustomRules()) }
+      catch (e) { setRuleSyncError('スプシ同期エラー: ' + e.message) }
+    }
   }
 
   const summary = ALL_CATEGORIES.map((cat) => ({
@@ -198,6 +209,7 @@ export default function PayPayImport({ transactions, onLoad }) {
                 <span className="unmatched-title">未分類の決裁先</span>
                 <span className="unmatched-badge">{unmatchedGroups.length}件</span>
               </div>
+              {ruleSyncError && <p className="error-msg">{ruleSyncError}</p>}
               <div className="unmatched-list">
                 {unmatchedGroups.map(({ description, count, total }) => (
                   <div key={description} className="unmatched-row">
