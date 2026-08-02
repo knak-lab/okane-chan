@@ -62,6 +62,7 @@ function doPost(e) {
       case 'saveAnnualPlan':     return ok(saveAnnualPlan(body.year, body.plan))
       case 'savePJData':         return ok(savePJData(body.type, body.data))
       case 'saveCategoryRules':  return ok(saveCategoryRules(body.rules))
+      case 'addCategoryRule':    return ok(addCategoryRule(body.keyword, body.category))
       case 'saveInsurances':       return ok(saveInsurances(body.masters, body.surrenderValues, body.payments))
       case 'saveInvestmentFunds':  return ok(saveInvestmentFunds(body.masters, body.records))
       case 'saveDCAccounts':       return ok(saveDCAccounts(body.masters, body.records))
@@ -497,6 +498,26 @@ function saveCategoryRules(rules) {
     sheet.getRange(2, 1, entries.length, RULE_HDR.length).setValues(entries.map(([k, v]) => [k, v]))
   }
   return { saved: entries.length }
+}
+
+// 1件だけ行単位で追加/更新（他の行には触れない・他端末分を上書きしない）
+function addCategoryRule(keyword, category) {
+  const kw = String(keyword || '').trim()
+  const cat = String(category || '').trim()
+  if (!kw || !cat) return { error: 'keyword and category are required' }
+  const sheet = getRuleSheet()
+  const lastRow = sheet.getLastRow()
+  if (lastRow > 1) {
+    const keys = sheet.getRange(2, 1, lastRow - 1, 1).getValues()
+    for (let i = 0; i < keys.length; i++) {
+      if (String(keys[i][0] || '').trim() === kw) {
+        sheet.getRange(i + 2, 2).setValue(cat)
+        return { saved: 1, updated: true }
+      }
+    }
+  }
+  sheet.appendRow([kw, cat])
+  return { saved: 1, updated: false }
 }
 
 // ─────────────────────────────────────────

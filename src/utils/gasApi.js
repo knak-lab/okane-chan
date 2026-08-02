@@ -89,6 +89,7 @@ export const gasApi = {
 
   getCategoryRules: () => get('getCategoryRules'),
   saveCategoryRules: (rules) => post({ action: 'saveCategoryRules', rules }),
+  addCategoryRule: (keyword, category) => post({ action: 'addCategoryRule', keyword, category }),
 
   getInsurances: () => get('getInsurances'),
   saveInsurances: (data) => post({ action: 'saveInsurances', ...data }),

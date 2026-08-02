@@ -117,7 +117,7 @@ export default function PayPayImport({ transactions, onLoad }) {
     }))
     setRuleSyncError('')
     if (isGasReady()) {
-      try { await gasApi.saveCategoryRules(loadCustomRules()) }
+      try { await gasApi.addCategoryRule(description, category) }
       catch (e) { setRuleSyncError('スプシ同期エラー: ' + e.message) }
     }
   }
