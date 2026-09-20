@@ -1,9 +1,13 @@
 import { useMemo, useState, useEffect, Fragment } from 'react'
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
+import { readCache, writeCache } from '../utils/localCache'
 import OsaifuInput from './OsaifuInput'
 import BucketYearChart from './BucketYearChart'
 import './AccView.css'
+
+const MONTHS_CACHE_KEY = 'acc:months'
+const monthDataCacheKey = (month) => `acc:month:${month}`
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
 const CUMULATIVE = '累計'
@@ -37,24 +41,42 @@ export default function AccView() {
   // 「累計」選択時は最新の実月（当月）を基準にJan〜当月のデータを扱う
   const displayMonth = isCumulative ? availableMonths[0] : selectedMonth
 
-  // 月リスト取得（初回のみ）
+  // 月リスト取得（初回のみ）。前回起動時のリストがあれば通信を待たずに即使う
   useEffect(() => {
     if (!isGasReady()) return
+    const cachedMonths = readCache(MONTHS_CACHE_KEY)
+    if (cachedMonths?.length > 0) {
+      setAvailableMonths(cachedMonths)
+      setSelected(cachedMonths[0])
+    }
     gasApi.getMonths().then(r => {
       const ms = [...new Set([...(r.months || []), ...currentFiscalYearMonths()])]
         .sort()
         .reverse()
       setAvailableMonths(ms)
       if (ms.length > 0) setSelected(ms[0])
+      writeCache(MONTHS_CACHE_KEY, ms)
     })
     gasApi.getLastImportedAt().then(r => setLastImportedAt(r.lastImportedAt || '')).catch(() => {})
   }, [])
 
-  // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）
+  // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）。
+  // この画面は表示専用（編集操作を持たない）なので、キャッシュを即表示して裏で
+  // 最新を取り直すだけでよく、古いデータを基に保存してしまう心配は無い。
   useEffect(() => {
     if (!displayMonth || availableMonths.length === 0) return
     let cancelled = false
-    setStatus('loading')
+    const cacheKey = monthDataCacheKey(displayMonth)
+    const cached = readCache(cacheKey)
+    if (cached) {
+      setTransactions(cached.transactions)
+      setAnnualPlan(cached.annualPlan)
+      setAnnualTx(cached.annualTx)
+      setCommonAccounts(cached.commonAccounts)
+      setStatus('done')
+    } else {
+      setStatus('loading')
+    }
     const year = displayMonth.split('-')[0]
     const priorMonths = getFiscalPriorMonths(displayMonth, availableMonths)
     Promise.all([
@@ -65,12 +87,12 @@ export default function AccView() {
     ])
       .then(([result, planResult, assetResult, ...priorResults]) => {
         if (cancelled) return
-        setTransactions(result.transactions || [])
-        setAnnualPlan(planResult.plan || null)
-        setAnnualTx([
-          ...(result.transactions || []),
+        const nextTransactions = result.transactions || []
+        const nextAnnualPlan = planResult.plan || null
+        const nextAnnualTx = [
+          ...nextTransactions,
           ...priorResults.flatMap(r => r.transactions || []),
-        ])
+        ]
         const grouped = {}
         for (const r of (assetResult.assets || [])) {
           if (r['区分'] !== '共通') continue
@@ -78,15 +100,23 @@ export default function AccView() {
           if (!grouped[key]) grouped[key] = { 種別: r['種別'], 口座名: r['口座名'], records: [] }
           if (r['月']) grouped[key].records.push({ month: r['月'], amount: r['金額'] ?? '' })
         }
-        setCommonAccounts(
-          Object.values(grouped).map(a => ({
-            ...a,
-            records: a.records.sort((x, y) => y.month.localeCompare(x.month)),
-          }))
-        )
+        const nextCommonAccounts = Object.values(grouped).map(a => ({
+          ...a,
+          records: a.records.sort((x, y) => y.month.localeCompare(x.month)),
+        }))
+        setTransactions(nextTransactions)
+        setAnnualPlan(nextAnnualPlan)
+        setAnnualTx(nextAnnualTx)
+        setCommonAccounts(nextCommonAccounts)
         setStatus('done')
+        writeCache(cacheKey, {
+          transactions: nextTransactions,
+          annualPlan: nextAnnualPlan,
+          annualTx: nextAnnualTx,
+          commonAccounts: nextCommonAccounts,
+        })
       })
-      .catch(() => { if (!cancelled) setStatus('error') })
+      .catch(() => { if (!cancelled && !cached) setStatus('error') })
     return () => { cancelled = true }
   }, [displayMonth, availableMonths])
 

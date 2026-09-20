@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
+import { readCache, writeCache } from '../utils/localCache'
 
 const TOTAL = '合計'
 const MID = '安心＋暮らし'
@@ -29,21 +30,39 @@ export default function BucketYearChart() {
   const prevYear     = currentYear - 1
   const currentMonth = now.getMonth() + 1
 
+  // 表示専用（編集操作なし）のため、前回値をキャッシュから即表示し裏で最新を取り直す
   useEffect(() => {
     if (!isGasReady()) return
-    setStatus('loading')
+    const cacheKey = `bucketYearChart:${currentYear}`
+    const cached = readCache(cacheKey)
+    if (cached) {
+      setTransactions(cached.transactions)
+      setAnnualPlan(cached.annualPlan)
+      setPrevAnnualPlan(cached.prevAnnualPlan)
+      setStatus('done')
+    } else {
+      setStatus('loading')
+    }
     Promise.all([
       gasApi.getTransactions(''),
       gasApi.getAnnualPlan(currentYear),
       gasApi.getAnnualPlan(prevYear),
     ])
       .then(([txResult, planResult, prevPlanResult]) => {
-        setTransactions(txResult.transactions || [])
-        setAnnualPlan(planResult.plan || null)
-        setPrevAnnualPlan(prevPlanResult.plan || null)
+        const nextTransactions = txResult.transactions || []
+        const nextAnnualPlan = planResult.plan || null
+        const nextPrevAnnualPlan = prevPlanResult.plan || null
+        setTransactions(nextTransactions)
+        setAnnualPlan(nextAnnualPlan)
+        setPrevAnnualPlan(nextPrevAnnualPlan)
         setStatus('done')
+        writeCache(cacheKey, {
+          transactions: nextTransactions,
+          annualPlan: nextAnnualPlan,
+          prevAnnualPlan: nextPrevAnnualPlan,
+        })
       })
-      .catch(() => setStatus('error'))
+      .catch(() => { if (!cached) setStatus('error') })
   }, [currentYear, prevYear])
 
   const billable = useMemo(
