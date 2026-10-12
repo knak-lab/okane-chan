@@ -569,7 +569,7 @@ function saveDCAccounts(masters, records) {
 const FUND_MASTER_SHEET = '投資信託マスタ'
 const FUND_MASTER_HDR   = ['ファンド名', '証券会社', '積立スケジュール(JSON)', '開始年月', '想定利率(%)']
 const FUND_RECORD_SHEET = '評価額記録'
-const FUND_RECORD_HDR   = ['年月', 'ファンド名', '評価額', '累計投資額', '損益', '調整額']
+const FUND_RECORD_HDR   = ['年月', 'ファンド名', '評価額', '累計投資額', '損益', '調整額', '取得総額']
 
 function getInvestmentFunds() {
   return {

@@ -31,6 +31,13 @@ function calcCumulative(schedule, targetMonth) {
   return total
 }
 
+// 記録時点の投資額: 取得総額が入力されていればそれを優先、なければ旧方式（スケジュール自動計算＋調整額）
+const hasCost = (r) => String(r?.costAmt ?? '').trim() !== ''
+function calcInvested(fund, r) {
+  if (hasCost(r)) return parseAmt(r.costAmt)
+  return calcCumulative(fund.schedule, r.yearMonth) + parseAmt(r.adjustment)
+}
+
 // 現在継続中の期間の積立額を返す（シミュ用）
 function getCurrentMonthlyAmt(schedule) {
   if (!schedule || schedule.length === 0) return 0
@@ -56,24 +63,25 @@ const SIM_YEARS = [1, 3, 5, 10, 20, 30]
 
 // ── 評価額セクション ──
 function EvalSection({ fund, onUpdate }) {
-  const [form, setForm] = useState({ yearMonth: thisMonth, evalAmt: '', adjustment: '' })
+  const [form, setForm] = useState({ yearMonth: thisMonth, evalAmt: '', costAmt: '' })
 
   const sortedRecords = [...(fund.records || [])].sort((a, b) =>
     b.yearMonth.localeCompare(a.yearMonth)
   )
 
   const addRecord = () => {
-    if (!form.yearMonth || !form.evalAmt) return
+    if (!form.yearMonth || !form.evalAmt || !form.costAmt) return
     const rec = {
       id:         newId(),
       yearMonth:  form.yearMonth,
       evalAmt:    form.evalAmt,
-      adjustment: form.adjustment || '0',
+      costAmt:    form.costAmt,
+      adjustment: '0',
     }
     const next = [...fund.records.filter(r => r.yearMonth !== form.yearMonth), rec]
       .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
     onUpdate({ ...fund, records: next })
-    setForm(p => ({ ...p, evalAmt: '', adjustment: '' }))
+    setForm(p => ({ ...p, evalAmt: '', costAmt: '' }))
   }
 
   const removeRecord = (id) => {
@@ -104,16 +112,16 @@ function EvalSection({ fund, onUpdate }) {
           onKeyDown={e => e.key === 'Enter' && addRecord()}
         />
         <input
-          className="inv-cell-input inv-cell-input--adj"
+          className="inv-cell-input inv-cell-input--wide"
           type="number"
-          placeholder="調整額（任意）"
-          value={form.adjustment}
-          onChange={e => setForm(p => ({ ...p, adjustment: e.target.value }))}
+          placeholder="取得総額（円）"
+          value={form.costAmt}
+          onChange={e => setForm(p => ({ ...p, costAmt: e.target.value }))}
           onKeyDown={e => e.key === 'Enter' && addRecord()}
         />
         <button className="inv-record-btn" onClick={addRecord}>記録</button>
       </div>
-      <p className="inv-adj-hint">調整額：一時入金・移管など積立以外の加算分（マイナス可）</p>
+      <p className="inv-adj-hint">取得総額：証券会社の画面に表示される「取得総額（取得金額）」をそのまま入力</p>
 
       {sortedRecords.length > 0 ? (
         <div className="inv-table-wrap">
@@ -122,7 +130,7 @@ function EvalSection({ fund, onUpdate }) {
               <tr>
                 <th>年月</th>
                 <th className="r">評価額</th>
-                <th className="r">累計投資</th>
+                <th className="r">取得総額</th>
                 <th className="r">損益</th>
                 <th className="r">損益率</th>
                 <th></th>
@@ -130,9 +138,8 @@ function EvalSection({ fund, onUpdate }) {
             </thead>
             <tbody>
               {sortedRecords.map(r => {
-                const autoCum = calcCumulative(fund.schedule, r.yearMonth)
-                const adj     = parseAmt(r.adjustment)
-                const cum     = autoCum + adj
+                const adj     = hasCost(r) ? 0 : parseAmt(r.adjustment)
+                const cum     = calcInvested(fund, r)
                 const ev      = parseAmt(r.evalAmt)
                 const pnl     = ev - cum
                 const pnlR    = cum ? pnl / cum * 100 : null
@@ -275,9 +282,7 @@ function SimSection({ fund }) {
   }
 
   const currentAmt = getCurrentMonthlyAmt(fund.schedule)
-  const autoCum    = calcCumulative(fund.schedule, latest.yearMonth)
-  const adj        = parseAmt(latest.adjustment)
-  const latestCum  = autoCum + adj
+  const latestCum  = calcInvested(fund, latest)
   const latestEv   = parseAmt(latest.evalAmt)
   const fvArr      = simulateFV(latestEv, currentAmt, fund.expectedRate, SIM_YEARS)
 
@@ -328,9 +333,7 @@ function FundCard({ fund, onUpdate, onRemove }) {
   const sorted   = [...(fund.records || [])].sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
   const latest   = sorted[0]
   const latestEv = latest ? parseAmt(latest.evalAmt) : null
-  const autoCum  = latest ? calcCumulative(fund.schedule, latest.yearMonth) : null
-  const adj      = latest ? parseAmt(latest.adjustment) : 0
-  const latestCum  = autoCum !== null ? autoCum + adj : null
+  const latestCum  = latest ? calcInvested(fund, latest) : null
   const latestPnL  = latestCum !== null ? latestEv - latestCum : null
   const latestPnLR = latestCum ? latestPnL / latestCum * 100 : null
 
@@ -372,7 +375,7 @@ function FundCard({ fund, onUpdate, onRemove }) {
                 <span className="inv-kpi-value">{fmt(latestEv)}</span>
               </div>
               <div className="inv-kpi">
-                <span className="inv-kpi-label">累計投資</span>
+                <span className="inv-kpi-label">取得総額</span>
                 <span className="inv-kpi-value inv-muted">{fmt(latestCum)}</span>
               </div>
               <div className="inv-kpi">
@@ -454,6 +457,7 @@ export default function InvestmentSection() {
               yearMonth:  r['年月']   || '',
               evalAmt:    r['評価額'] || '',
               adjustment: r['調整額'] || '0',
+              costAmt:    r['取得総額'] || '',
             }))
             .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth)),
         }
@@ -481,17 +485,16 @@ export default function InvestmentSection() {
       }))
       const records = funds.flatMap(f =>
         f.records.map(r => {
-          const autoCum = calcCumulative(f.schedule, r.yearMonth)
-          const adj     = parseAmt(r.adjustment)
-          const cum     = autoCum + adj
-          const ev      = parseAmt(r.evalAmt)
+          const cum = calcInvested(f, r)
+          const ev  = parseAmt(r.evalAmt)
           return {
             '年月':       r.yearMonth,
             'ファンド名': f.name,
             '評価額':     r.evalAmt,
             '累計投資額': String(cum),
             '損益':       String(Math.round(ev - cum)),
-            '調整額':     String(adj),
+            '調整額':     String(hasCost(r) ? 0 : parseAmt(r.adjustment)),
+            '取得総額':   r.costAmt || '',
           }
         })
       )
