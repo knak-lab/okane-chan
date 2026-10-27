@@ -9,8 +9,8 @@ import AccView from './components/AccView'
 import CategoryRules from './components/CategoryRules'
 import InsuranceSimulator from './components/InsuranceSimulator'
 import SimTab from './components/SimTab'
-import { gasApi, isGasReady } from './utils/gasApi'
-import { applyRulesFromGas } from './utils/customRules'
+import { isGasReady } from './utils/gasApi'
+import { syncRulesWithGas } from './utils/customRules'
 import './App.css'
 
 const TABS = [
@@ -37,9 +37,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isGasReady()) return
-    gasApi.getCategoryRules()
-      .then(({ rules }) => applyRulesFromGas(rules))
-      .catch(() => {})
+    syncRulesWithGas().catch((e) => console.warn('[rules] sync failed', e))
   }, [])
 
   return (
