@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import { parsePayPayCSV } from '../utils/parsePayPay'
 import { categorize, ALL_CATEGORIES } from '../utils/categorize'
-import { loadCustomRules, saveCustomRule, deleteCustomRule } from '../utils/customRules'
+import { loadCustomRules, saveCustomRule, deleteCustomRule, syncRulesWithGas } from '../utils/customRules'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import './PayPayImport.css'
 
@@ -25,6 +25,7 @@ export default function PayPayImport({ transactions, onLoad }) {
   const [savedRules, setSavedRules]     = useState(loadCustomRules)
   const [showRules, setShowRules]       = useState(false)
   const [ruleSyncError, setRuleSyncError] = useState('')
+  const [importing, setImporting]       = useState(false)
   const fileInputRef = useRef(null)
 
   const processFile = useCallback((file) => {
@@ -35,7 +36,16 @@ export default function PayPayImport({ transactions, onLoad }) {
     setError('')
     setSaveStatus('idle')
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      // 他端末で追加されたルールを取り込んでから分類する（失敗時は端末内のルールで続行）
+      if (isGasReady()) {
+        setImporting(true)
+        setRuleSyncError('')
+        try { await syncRulesWithGas() }
+        catch (err) { setRuleSyncError('ルールの最新化に失敗（端末内のルールで分類しました）: ' + err.message) }
+        setSavedRules(loadCustomRules())
+        setImporting(false)
+      }
       try {
         const parsed = parsePayPayCSV(e.target.result)
         if (parsed.length === 0) {
@@ -145,7 +155,9 @@ export default function PayPayImport({ transactions, onLoad }) {
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        {transactions.length === 0 ? (
+        {importing ? (
+          <p className="drop-zone-sub">最新のルールを取得中…</p>
+        ) : transactions.length === 0 ? (
           <>
             <div className="drop-zone-icon">📂</div>
             <p className="drop-zone-text">PayPay利用明細CSVをドラッグ&ドロップ</p>
