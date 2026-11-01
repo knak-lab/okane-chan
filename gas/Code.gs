@@ -62,7 +62,9 @@ function doPost(e) {
       case 'saveAnnualPlan':     return ok(saveAnnualPlan(body.year, body.plan))
       case 'savePJData':         return ok(savePJData(body.type, body.data))
       case 'saveCategoryRules':  return ok(saveCategoryRules(body.rules))
-      case 'addCategoryRule':    return ok(addCategoryRule(body.keyword, body.category))
+      case 'addCategoryRule':    return ok(addCategoryRules({ [body.keyword]: body.category }))
+      case 'addCategoryRules':   return ok(addCategoryRules(body.rules))
+      case 'deleteCategoryRule': return ok(deleteCategoryRule(body.keyword))
       case 'saveInsurances':       return ok(saveInsurances(body.masters, body.surrenderValues, body.payments))
       case 'saveInvestmentFunds':  return ok(saveInvestmentFunds(body.masters, body.records))
       case 'saveDCAccounts':       return ok(saveDCAccounts(body.masters, body.records))
@@ -500,24 +502,67 @@ function saveCategoryRules(rules) {
   return { saved: entries.length }
 }
 
-// 1件だけ行単位で追加/更新（他の行には触れない・他端末分を上書きしない）
-function addCategoryRule(keyword, category) {
-  const kw = String(keyword || '').trim()
-  const cat = String(category || '').trim()
-  if (!kw || !cat) return { error: 'keyword and category are required' }
-  const sheet = getRuleSheet()
-  const lastRow = sheet.getLastRow()
-  if (lastRow > 1) {
-    const keys = sheet.getRange(2, 1, lastRow - 1, 1).getValues()
-    for (let i = 0; i < keys.length; i++) {
-      if (String(keys[i][0] || '').trim() === kw) {
-        sheet.getRange(i + 2, 2).setValue(cat)
-        return { saved: 1, updated: true }
+// 行単位で追加/更新（他の行には触れない・他端末分を上書きしない）
+function addCategoryRules(rules) {
+  const entries = Object.entries(rules || {})
+    .map(([k, v]) => [String(k || '').trim(), String(v || '').trim()])
+    .filter(([k, v]) => k && v)
+  if (entries.length === 0) return { error: 'rules is required' }
+  return withRuleLock(() => {
+    const sheet = getRuleSheet()
+    const lastRow = sheet.getLastRow()
+    const keys = lastRow > 1
+      ? sheet.getRange(2, 1, lastRow - 1, 1).getValues().map(r => String(r[0] || '').trim())
+      : []
+    let updated = 0
+    const appends = []
+    for (const [kw, cat] of entries) {
+      const idx = keys.indexOf(kw)
+      if (idx !== -1) {
+        sheet.getRange(idx + 2, 2).setValue(cat)
+        updated++
+      } else {
+        appends.push([kw, cat])
+        keys.push(kw)
       }
     }
+    if (appends.length > 0) {
+      sheet.getRange(sheet.getLastRow() + 1, 1, appends.length, RULE_HDR.length).setValues(appends)
+    }
+    return { saved: entries.length, updated, inserted: appends.length }
+  })
+}
+
+// 該当キーワードの行だけ削除
+function deleteCategoryRule(keyword) {
+  const kw = String(keyword || '').trim()
+  if (!kw) return { error: 'keyword is required' }
+  return withRuleLock(() => {
+    const sheet = getRuleSheet()
+    const lastRow = sheet.getLastRow()
+    if (lastRow <= 1) return { deleted: 0 }
+    const keys = sheet.getRange(2, 1, lastRow - 1, 1).getValues()
+    let deleted = 0
+    for (let i = keys.length - 1; i >= 0; i--) {
+      if (String(keys[i][0] || '').trim() === kw) {
+        sheet.deleteRow(i + 2)
+        deleted++
+      }
+    }
+    return { deleted }
+  })
+}
+
+// 複数端末からの同時書き込みで行が消えたり重複したりしないよう直列化
+function withRuleLock(fn) {
+  const lock = LockService.getScriptLock()
+  lock.waitLock(20000)
+  try {
+    return fn()
+  } finally {
+    SpreadsheetApp.flush()
+    lock.releaseLock()
   }
-  sheet.appendRow([kw, cat])
-  return { saved: 1, updated: false }
 }
 
 // ─────────────────────────────────────────

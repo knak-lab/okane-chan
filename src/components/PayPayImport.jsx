@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useMemo } from 'react'
 import { parsePayPayCSV } from '../utils/parsePayPay'
 import { categorize, ALL_CATEGORIES } from '../utils/categorize'
-import { loadCustomRules, saveCustomRule, deleteCustomRule } from '../utils/customRules'
+import { loadCustomRules, saveCustomRule, deleteCustomRule, syncRulesWithGas } from '../utils/customRules'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import './PayPayImport.css'
 
@@ -25,6 +25,7 @@ export default function PayPayImport({ transactions, onLoad }) {
   const [savedRules, setSavedRules]     = useState(loadCustomRules)
   const [showRules, setShowRules]       = useState(false)
   const [ruleSyncError, setRuleSyncError] = useState('')
+  const [importing, setImporting]       = useState(false)
   const fileInputRef = useRef(null)
 
   const processFile = useCallback((file) => {
@@ -35,7 +36,16 @@ export default function PayPayImport({ transactions, onLoad }) {
     setError('')
     setSaveStatus('idle')
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      // 他端末で追加されたルールを取り込んでから分類する（失敗時は端末内のルールで続行）
+      if (isGasReady()) {
+        setImporting(true)
+        setRuleSyncError('')
+        try { await syncRulesWithGas() }
+        catch (err) { setRuleSyncError('ルールの最新化に失敗（端末内のルールで分類しました）: ' + err.message) }
+        setSavedRules(loadCustomRules())
+        setImporting(false)
+      }
       try {
         const parsed = parsePayPayCSV(e.target.result)
         if (parsed.length === 0) {
@@ -107,7 +117,7 @@ export default function PayPayImport({ transactions, onLoad }) {
 
   const handleAddRule = async (description) => {
     const category = ruleSelections[description] ?? ALL_CATEGORIES[0]
-    saveCustomRule(description, category)
+    const sync = saveCustomRule(description, category)
     setSavedRules(loadCustomRules())
     // カスタムルールを反映して再カテゴリ
     onLoad(transactions.map(row => {
@@ -116,20 +126,16 @@ export default function PayPayImport({ transactions, onLoad }) {
       return newCat !== row.category ? { ...row, category: newCat } : row
     }))
     setRuleSyncError('')
-    if (isGasReady()) {
-      try { await gasApi.addCategoryRule(description, category) }
-      catch (e) { setRuleSyncError('スプシ同期エラー: ' + e.message) }
-    }
+    try { await sync }
+    catch (e) { setRuleSyncError('スプシ同期エラー（次回起動時に再送します）: ' + e.message) }
   }
 
   const handleDeleteRule = async (keyword) => {
-    deleteCustomRule(keyword)
+    const sync = deleteCustomRule(keyword)
     setSavedRules(loadCustomRules())
     setRuleSyncError('')
-    if (isGasReady()) {
-      try { await gasApi.saveCategoryRules(loadCustomRules()) }
-      catch (e) { setRuleSyncError('スプシ同期エラー: ' + e.message) }
-    }
+    try { await sync }
+    catch (e) { setRuleSyncError('スプシ同期エラー（次回起動時に再送します）: ' + e.message) }
   }
 
   const summary = ALL_CATEGORIES.map((cat) => ({
@@ -149,7 +155,9 @@ export default function PayPayImport({ transactions, onLoad }) {
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        {transactions.length === 0 ? (
+        {importing ? (
+          <p className="drop-zone-sub">最新のルールを取得中…</p>
+        ) : transactions.length === 0 ? (
           <>
             <div className="drop-zone-icon">📂</div>
             <p className="drop-zone-text">PayPay利用明細CSVをドラッグ&ドロップ</p>
@@ -202,6 +210,8 @@ export default function PayPayImport({ transactions, onLoad }) {
             </div>
           </div>
 
+          {ruleSyncError && <p className="error-msg">{ruleSyncError}</p>}
+
           {/* 未分類の決裁先パネル */}
           {unmatchedGroups.length > 0 && (
             <div className="unmatched-section">
@@ -209,7 +219,6 @@ export default function PayPayImport({ transactions, onLoad }) {
                 <span className="unmatched-title">未分類の決裁先</span>
                 <span className="unmatched-badge">{unmatchedGroups.length}件</span>
               </div>
-              {ruleSyncError && <p className="error-msg">{ruleSyncError}</p>}
               <div className="unmatched-list">
                 {unmatchedGroups.map(({ description, count, total }) => (
                   <div key={description} className="unmatched-row">

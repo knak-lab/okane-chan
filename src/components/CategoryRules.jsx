@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { ALL_CATEGORIES } from '../utils/categorize'
-import { loadCustomRules, saveCustomRule, deleteCustomRule } from '../utils/customRules'
+import { loadCustomRules, saveCustomRules, deleteCustomRule } from '../utils/customRules'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import './CategoryRules.css'
 
@@ -67,10 +67,11 @@ function RuleSetSection() {
         const payee = (t['取引先'] || '').trim()
         if (payee && payee !== '-') ruleMap[payee] = t.category
       })
-      Object.entries(ruleMap).forEach(([kw, cat]) => saveCustomRule(kw, cat))
+      const ruleSync = saveCustomRules(ruleMap)
       reloadRules()
       setSyncError('')
-      if (isGasReady()) await gasApi.saveCategoryRules(loadCustomRules())
+      try { await ruleSync }
+      catch (e) { setSyncError('スプシ同期エラー（次回起動時に再送します）: ' + e.message) }
 
       setResults((prev) => prev.map((t) =>
         changes[t.id] !== undefined ? { ...t, category: changes[t.id] } : t
@@ -198,13 +199,11 @@ function RuleSetSection() {
                     <td className="catrules-cat">{cat}</td>
                     <td>
                       <button className="remove-btn" onClick={async () => {
-                        deleteCustomRule(kw)
+                        const sync = deleteCustomRule(kw)
                         reloadRules()
                         setSyncError('')
-                        if (isGasReady()) {
-                          try { await gasApi.saveCategoryRules(loadCustomRules()) }
-                          catch (e) { setSyncError('スプシ同期エラー: ' + e.message) }
-                        }
+                        try { await sync }
+                        catch (e) { setSyncError('スプシ同期エラー（次回起動時に再送します）: ' + e.message) }
                       }}>×</button>
                     </td>
                   </tr>
