@@ -191,7 +191,7 @@ export default function Dashboard({ transactions, onLoad }) {
 
   const groupedBucketData = useMemo(() => {
     const groups = [
-      { name: '安心＋暮らし', short: '安心＋暮らし', color: '#003087', names: ['安心ライフ費', '暮らしの彩り費'] },
+      { name: '安心＋彩り', short: '安心＋彩り', color: '#003087', names: ['安心ライフ費', '暮らしの彩り費'] },
       { name: 'ときめき＋冒険', short: 'ときめき＋冒険', color: '#F47920', names: ['ときめきチョイス費', '冒険予算'] },
       { name: '妊活', short: '妊活', color: '#EC4899', names: ['妊活'] },
     ]
