@@ -183,6 +183,13 @@ export async function requireIdToken() {
   return promise
 }
 
+// 保存済みの有効なIDトークンを返す（なければ null）。ログイン画面は出さない。
+// 他アプリのデータをついでに読むときなど、失敗しても困らない読み込みで使う。
+export function peekIdToken() {
+  const stored = readStoredToken()
+  return stored ? stored.token : null
+}
+
 export function hasValidToken() {
   return Boolean(readStoredToken())
 }
