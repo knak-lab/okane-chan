@@ -29,7 +29,7 @@ function isAuthorized(idToken) {
 function doGet(e) {
   const action = e.parameter.action || ''
   const month  = e.parameter.month  || ''
-  if (!isAuthorized(e.parameter.id_token)) return err('Unauthorized')
+  if (!isAuthorized(e.parameter.id_token)) return err('Unauthorized: ' + authFailReason_())
   try {
     switch (action) {
       case 'getTransactions':   return ok(getTransactions(month))
@@ -54,7 +54,7 @@ function doPost(e) {
   try {
     const raw  = e.parameter.data || e.postData.contents
     const body = JSON.parse(raw)
-    if (!isAuthorized(body.id_token)) return err('Unauthorized')
+    if (!isAuthorized(body.id_token)) return err('Unauthorized: ' + authFailReason_())
     switch (body.action) {
       case 'saveTransactions':   return ok(saveTransactions(body.transactions))
       case 'clearMonth':         return ok(clearMonth(body.month))

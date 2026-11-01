@@ -187,7 +187,8 @@ export async function withIdToken(fn) {
   const token = await requireIdToken()
   const json = await fn(token)
   if (!isUnauthorized(json)) return json
-  invalidateToken('このGoogleアカウントでは利用できないか、ログインの有効期限が切れました。もう一度ログインしてください。')
+  const reason = String(json.error || '').replace(/^unauthorized:?\s*/i, '')
+  invalidateToken('ログインできませんでした。' + (reason ? '（理由：' + reason + '）' : 'もう一度ログインしてください。'))
   const retryToken = await requireIdToken()
   return fn(retryToken)
 }
