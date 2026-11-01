@@ -327,6 +327,60 @@
 .acc-detail-desc   { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acc-detail-amount { white-space: nowrap; width: 90px; text-align: right; font-variant-numeric: tabular-nums; }
 
+.acc-detail-row--editable { cursor: pointer; }
+.acc-detail-row--editable:active td { background: #EEF2F7; }
+
+.acc-detail-edit-row td { background: #EEF2F7; padding: 6px 8px 8px; }
+
+.acc-cat-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: #64748B;
+}
+
+.acc-cat-edit select {
+  flex: 1;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.acc-cat-edit input {
+  flex: 1;
+  font-size: 0.85rem;
+  padding: 4px 6px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.acc-cat-confirm { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.acc-cat-confirm-q { margin: 0; font-size: 0.78rem; font-weight: 700; color: #1A1F36; }
+.acc-cat-confirm-note { margin: 0; font-size: 0.7rem; color: #94A3B8; }
+.acc-cat-confirm-btns { display: flex; gap: 8px; }
+
+.acc-cat-btn {
+  flex: 1;
+  font-size: 0.8rem;
+  padding: 7px 0;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1A1F36;
+  cursor: pointer;
+}
+.acc-cat-btn--primary { background: #003087; border-color: #003087; color: #fff; }
+.acc-cat-btn:disabled { opacity: 0.4; cursor: default; }
+
+.acc-cat-save { font-size: 0.75rem; margin: 0 0 6px; }
+.acc-cat-save--saving { color: #94A3B8; }
+.acc-cat-save--saved  { color: #059669; }
+.acc-cat-save--error  { color: #f85149; }
+
 .acc-common-type {
   font-size: 0.68rem;
   color: #94A3B8;

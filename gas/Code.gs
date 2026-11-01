@@ -57,6 +57,7 @@ function doPost(e) {
     if (!isAuthorized(body.id_token)) return err('Unauthorized: ' + authFailReason_())
     switch (body.action) {
       case 'saveTransactions':   return ok(saveTransactions(body.transactions))
+      case 'updateTransactionCategory': return ok(updateTransactionCategory(body.txId, body.category))
       case 'clearMonth':         return ok(clearMonth(body.month))
       case 'saveAssets':         return ok(saveAssets(body.assets))
       case 'saveAnnualPlan':     return ok(saveAnnualPlan(body.year, body.plan))
@@ -229,6 +230,22 @@ function saveTransactions(transactions) {
   )]
   recordImportTimestamp()
   return { saved: transactions.length, inserted: toInsert.length, updated, months }
+}
+
+// 取引1件のカテゴリ列だけを書き換える（明細からのカテゴリ変更用。取込日時は更新しない）
+function updateTransactionCategory(txId, category) {
+  if (!txId) throw new Error('txId is required')
+  const sheet   = getSheet()
+  const data    = sheet.getDataRange().getValues()
+  const txIdIdx = HDR.indexOf('取引番号')
+  const catIdx  = HDR.indexOf('カテゴリ')
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][txIdIdx]) === String(txId)) {
+      sheet.getRange(i + 1, catIdx + 1).setValue(category || '')
+      return { updated: 1 }
+    }
+  }
+  throw new Error('取引が見つかりません: ' + txId)
 }
 
 // ─────────────────────────────────────────

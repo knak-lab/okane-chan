@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, Fragment } from 'react'
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { readCache, writeCache } from '../utils/localCache'
+import { ALL_CATEGORIES } from '../utils/categorize'
+import { saveCustomRule } from '../utils/customRules'
 import OsaifuInput from './OsaifuInput'
 import BucketYearChart from './BucketYearChart'
 import './AccView.css'
@@ -36,6 +38,9 @@ export default function AccView() {
   const [commonAccounts, setCommonAccounts] = useState([])
   const [openBucket, setOpenBucket] = useState(null)
   const [lastImportedAt, setLastImportedAt] = useState('')
+  // 明細でカテゴリ編集中の取引: { id, category, keyword }
+  const [editDraft, setEditDraft] = useState(null)
+  const [catSave, setCatSave] = useState({ id: null, status: 'idle', msg: '' })
 
   const isCumulative = selectedMonth === CUMULATIVE
   // 「累計」選択時は最新の実月（当月）を基準にJan〜当月のデータを扱う
@@ -61,8 +66,8 @@ export default function AccView() {
   }, [])
 
   // 月が変わるたびにデータ再取得（切替連打時に古い応答が新しい応答を上書きしないようガード）。
-  // この画面は表示専用（編集操作を持たない）なので、キャッシュを即表示して裏で
-  // 最新を取り直すだけでよく、古いデータを基に保存してしまう心配は無い。
+  // キャッシュを即表示して裏で最新を取り直す。編集は明細のカテゴリ変更だけで、
+  // 取引1件の行を取引番号で上書きするため、古いキャッシュが他の取引を巻き戻すことは無い。
   useEffect(() => {
     if (!displayMonth || availableMonths.length === 0) return
     let cancelled = false
@@ -122,6 +127,47 @@ export default function AccView() {
 
   // 月/累計の切替時は開いていた明細を閉じる
   useEffect(() => { setOpenBucket(null) }, [selectedMonth])
+  useEffect(() => {
+    setEditDraft(null)
+    setCatSave({ id: null, status: 'idle', msg: '' })
+  }, [openBucket])
+
+  // 明細のカテゴリ変更。画面は先に書き換え、その1件のカテゴリ列だけをスプシに保存する。
+  // ruleKeyword があればカテゴリルールにも追加する（今後のCSV取込の自動分類に効く）。
+  // 取引の保存に失敗したら元のカテゴリに戻す。
+  const handleCategoryChange = async (tx, newCategory, ruleKeyword) => {
+    if (!tx.id || newCategory === tx.category) return
+    const replace = (category) => (list) => list.map(t => t.id === tx.id ? { ...t, category } : t)
+    setTransactions(replace(newCategory))
+    setAnnualTx(replace(newCategory))
+    setEditDraft(null)
+    setCatSave({ id: tx.id, status: 'saving', msg: '保存中…' })
+    // ルールは送信失敗しても端末に保留され、次回起動時に再送される
+    const ruleSync = ruleKeyword ? saveCustomRule(ruleKeyword, newCategory).then(() => '', e => e.message) : null
+    try {
+      await gasApi.updateTransactionCategory(tx.id, newCategory)
+      // 次回起動時に古いカテゴリが一瞬表示されないよう、この月のキャッシュも書き換える
+      const cacheKey = monthDataCacheKey(displayMonth)
+      const cached = readCache(cacheKey)
+      if (cached) {
+        writeCache(cacheKey, {
+          ...cached,
+          transactions: replace(newCategory)(cached.transactions),
+          annualTx: replace(newCategory)(cached.annualTx),
+        })
+      }
+      const ruleError = ruleSync ? await ruleSync : ''
+      const msg = `「${tx.description}」を${newCategory}に変更しました`
+        + (ruleKeyword ? (ruleError
+          ? `（ルールは未送信。次回起動時に再送します）`
+          : `（ルール「${ruleKeyword}」→${newCategory} も追加）`) : '')
+      setCatSave({ id: tx.id, status: 'saved', msg })
+    } catch (e) {
+      setTransactions(replace(tx.category))
+      setAnnualTx(replace(tx.category))
+      setCatSave({ id: tx.id, status: 'error', msg: `保存に失敗しました：${e.message}` })
+    }
+  }
 
   const billable = useMemo(
     () => transactions.filter(t => t.category !== '対象外'),
@@ -260,9 +306,9 @@ export default function AccView() {
             </tr>
           </thead>
           <tbody>
-            {/* 中計（安心＋暮らし）当月のみ */}
+            {/* 中計（安心＋彩り）当月のみ */}
             <tr className="acc-mid-row">
-              <td className="acc-td-name acc-mid-label">安心＋暮らし</td>
+              <td className="acc-td-name acc-mid-label">安心＋彩り</td>
               <td className={`acc-td-r ${midData.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
                 {midData.remaining < 0 ? '-' : ''}{fmt(Math.abs(midData.remaining))}
               </td>
@@ -282,7 +328,8 @@ export default function AccView() {
             {bucketData.filter(b => !['家賃', '妊活'].includes(b.name)).map(b => {
               const isOpen = openBucket === b.name
               const isAnnual = ANNUAL_BUCKET_NAMES.includes(b.name)
-              const detailSrc = (isAnnual || isCumulative) ? annualBillable : billable
+              // 明細は選択中の月だけ（「累計」選択時は1月〜当月）。年間バケットも残り/消化率は年間のまま
+              const detailSrc = isCumulative ? annualBillable : billable
               const detail = detailSrc
                 .filter(t => b.categories.includes(t.category))
                 .sort((x, y) => (x.date < y.date ? 1 : -1))
@@ -320,6 +367,9 @@ export default function AccView() {
                     <tr className="acc-detail-row-wrap">
                       <td colSpan={3} className="acc-detail-cell">
                         <div className="acc-detail-panel">
+                          {catSave.status !== 'idle' && (
+                            <p className={`acc-cat-save acc-cat-save--${catSave.status}`}>{catSave.msg}</p>
+                          )}
                           {detail.length === 0 ? (
                             <p className="acc-detail-empty">該当する取引がありません</p>
                           ) : (
@@ -332,13 +382,76 @@ export default function AccView() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {detail.map(t => (
-                                  <tr key={t.id}>
-                                    <td className="acc-detail-date">{t.date}</td>
-                                    <td className="acc-detail-desc">{t.description}</td>
-                                    <td className="acc-detail-amount">¥{t.amount.toLocaleString()}</td>
-                                  </tr>
-                                ))}
+                                {detail.map(t => {
+                                  const isEditing = editDraft?.id === t.id
+                                  const changed = isEditing && editDraft.category !== t.category
+                                  const keyword = isEditing ? editDraft.keyword.trim() : ''
+                                  return (
+                                    <Fragment key={t.id}>
+                                      <tr
+                                        className={t.id ? 'acc-detail-row--editable' : undefined}
+                                        onClick={() => t.id && setEditDraft(isEditing ? null : {
+                                          id: t.id, category: t.category, keyword: t.description,
+                                        })}
+                                      >
+                                        <td className="acc-detail-date">{t.date}</td>
+                                        <td className="acc-detail-desc">{t.description}</td>
+                                        <td className="acc-detail-amount">¥{t.amount.toLocaleString()}</td>
+                                      </tr>
+                                      {isEditing && (
+                                        <tr className="acc-detail-edit-row">
+                                          <td colSpan={3}>
+                                            <label className="acc-cat-edit">
+                                              カテゴリ
+                                              <select
+                                                value={editDraft.category}
+                                                onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))}
+                                                autoFocus
+                                              >
+                                                {ALL_CATEGORIES.map(cat => (
+                                                  <option key={cat} value={cat}>{cat}</option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                            {changed && (
+                                              <div className="acc-cat-confirm">
+                                                <p className="acc-cat-confirm-q">カテゴリルールも変更しますか？</p>
+                                                <label className="acc-cat-edit">
+                                                  キーワード
+                                                  <input
+                                                    type="text"
+                                                    value={editDraft.keyword}
+                                                    onChange={e => setEditDraft(d => ({ ...d, keyword: e.target.value }))}
+                                                  />
+                                                </label>
+                                                <p className="acc-cat-confirm-note">
+                                                  ルールも変更すると、今後のCSV取込で「{keyword || '…'}」を含む取引が{editDraft.category}になります
+                                                </p>
+                                                <div className="acc-cat-confirm-btns">
+                                                  <button
+                                                    type="button"
+                                                    className="acc-cat-btn acc-cat-btn--primary"
+                                                    onClick={() => handleCategoryChange(t, editDraft.category)}
+                                                  >
+                                                    この明細のみ
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    className="acc-cat-btn"
+                                                    disabled={!keyword}
+                                                    onClick={() => handleCategoryChange(t, editDraft.category, keyword)}
+                                                  >
+                                                    ルールも変更
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </Fragment>
+                                  )
+                                })}
                               </tbody>
                             </table>
                           )}
@@ -363,7 +476,7 @@ export default function AccView() {
           <span className={`acc-hesokin-amount ${cumulativeMidData.remaining < 0 ? 'acc-neg' : 'acc-pos'}`}>
             {cumulativeMidData.remaining < 0 ? '-' : ''}{fmt(Math.abs(cumulativeMidData.remaining))}
           </span>
-          <span className="acc-hesokin-label">安心＋暮らし プール金</span>
+          <span className="acc-hesokin-label">安心＋彩り プール金</span>
         </div>
         <div className="acc-hesokin-sub">
           <span>累計予算 {fmt(cumulativeMidData.budget)}</span>

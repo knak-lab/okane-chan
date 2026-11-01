@@ -80,6 +80,9 @@ export const gasApi = {
     return post({ action: 'saveTransactions', transactions: rows })
   },
 
+  updateTransactionCategory: (txId, category) =>
+    post({ action: 'updateTransactionCategory', txId, category }),
+
   clearMonth: (month) => post({ action: 'clearMonth', month }),
 
   getAssets: () => get('getAssets'),
