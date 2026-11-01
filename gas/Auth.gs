@@ -12,15 +12,20 @@
 // =============================================================
 
 const AUTH_CACHE_MAX_SEC_ = 600
-let AUTH_FAIL_REASON_ = ''
+let AUTH_FAIL_CODE_ = ''
 
-// 直前の verifyIdToken_ が拒否した理由（エラー文に付けて返す。原因調査用）
+// 直前の verifyIdToken_ が拒否した理由コード（外部に返すのはこの3種類だけ）
+//   login_required : ログインしていない／ログインの期限切れ
+//   not_allowed    : ALLOWED_EMAILS に登録されていないアカウント
+//   unavailable    : GAS側の設定不備など（詳細は返さない）
+// 詳しい理由は GAS の「実行数」画面のログにだけ残す（攻撃者にヒントを与えないため）
 function authFailReason_() {
-  return AUTH_FAIL_REASON_ || 'unknown'
+  return AUTH_FAIL_CODE_ || 'login_required'
 }
 
-function authFail_(reason) {
-  AUTH_FAIL_REASON_ = reason
+function authFail_(code, detail) {
+  AUTH_FAIL_CODE_ = code
+  if (detail) console.warn('[auth] ' + code + ': ' + detail)
   return null
 }
 
@@ -33,18 +38,18 @@ function allowedEmails_() {
 
 // 正しいIDトークンなら メールアドレス、だめなら null を返す
 function verifyIdToken_(idToken) {
-  AUTH_FAIL_REASON_ = ''
-  if (!idToken || typeof idToken !== 'string' || idToken.length > 4096) return authFail_('ログイン情報が送られていません')
+  AUTH_FAIL_CODE_ = ''
+  if (!idToken || typeof idToken !== 'string' || idToken.length > 4096) return authFail_('login_required')
   const clientId = String(PropertiesService.getScriptProperties().getProperty('GOOGLE_CLIENT_ID') || '').trim()
   const allowed = allowedEmails_()
-  if (!clientId) return authFail_('GASのスクリプトプロパティ GOOGLE_CLIENT_ID が未設定です')
-  if (allowed.length === 0) return authFail_('GASのスクリプトプロパティ ALLOWED_EMAILS が未設定です')
+  if (!clientId) return authFail_('unavailable', 'GOOGLE_CLIENT_ID が未設定')
+  if (allowed.length === 0) return authFail_('unavailable', 'ALLOWED_EMAILS が未設定')
 
   const cache = CacheService.getScriptCache()
   const key = 'idt_' + Utilities.base64EncodeWebSafe(
     Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken, Utilities.Charset.UTF_8))
   const cached = cache.get(key)
-  if (cached) return allowed.indexOf(cached) >= 0 ? cached : authFail_('このメールアドレスは ALLOWED_EMAILS に入っていません: ' + cached)
+  if (cached) return allowed.indexOf(cached) >= 0 ? cached : authFail_('not_allowed', '許可リスト外: ' + cached)
 
   let res
   try {
@@ -52,20 +57,20 @@ function verifyIdToken_(idToken) {
       'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
       { muteHttpExceptions: true })
   } catch (e) {
-    return authFail_('GASの外部通信が未許可です。GASエディタで authSelfCheck を実行して許可してください')
+    return authFail_('unavailable', '外部通信が未許可。authSelfCheck を実行して許可すること')
   }
-  if (res.getResponseCode() !== 200) return authFail_('Googleがログイン情報を無効と判定しました（期限切れの可能性）')
+  if (res.getResponseCode() !== 200) return authFail_('login_required', 'tokeninfo HTTP ' + res.getResponseCode())
   let info
-  try { info = JSON.parse(res.getContentText()) } catch (_) { return authFail_('Googleの応答を読めませんでした') }
+  try { info = JSON.parse(res.getContentText()) } catch (_) { return authFail_('unavailable', 'tokeninfo の応答を解析できない') }
 
-  if (info.aud !== clientId) return authFail_('GOOGLE_CLIENT_ID が画面側(VITE_GOOGLE_CLIENT_ID)と一致しません')
-  if (info.iss !== 'accounts.google.com' && info.iss !== 'https://accounts.google.com') return authFail_('発行元が不正です')
-  if (String(info.email_verified) !== 'true') return authFail_('メールアドレスが未確認のアカウントです')
+  if (info.aud !== clientId) return authFail_('unavailable', 'GOOGLE_CLIENT_ID と VITE_GOOGLE_CLIENT_ID が不一致')
+  if (info.iss !== 'accounts.google.com' && info.iss !== 'https://accounts.google.com') return authFail_('login_required', 'iss 不正: ' + info.iss)
+  if (String(info.email_verified) !== 'true') return authFail_('not_allowed', 'email 未確認')
   const now = Math.floor(Date.now() / 1000)
   const exp = Number(info.exp)
-  if (!exp || exp <= now) return authFail_('ログインの有効期限が切れています')
+  if (!exp || exp <= now) return authFail_('login_required', '期限切れ')
   const email = String(info.email || '').toLowerCase()
-  if (allowed.indexOf(email) < 0) return authFail_('このメールアドレスは ALLOWED_EMAILS に入っていません: ' + email)
+  if (allowed.indexOf(email) < 0) return authFail_('not_allowed', '許可リスト外: ' + email)
 
   cache.put(key, email, Math.max(1, Math.min(exp - now, AUTH_CACHE_MAX_SEC_)))
   return email

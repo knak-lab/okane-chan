@@ -3,7 +3,7 @@
 //
 //  ・ログインすると Google が「IDトークン」（約1時間有効）を発行する
 //  ・GAS へのリクエストには必ずこの IDトークンを付ける
-//  ・GAS 側で「本物のトークンか」「許可されたメールか」を確認する
+//  ・GAS 側で「本物のトークンか」「登録されたメールか」を確認する
 //    → サイトのJSを読まれても、データにはアクセスできない
 //
 //  knak-lab.github.io 配下のアプリは localStorage を共有するので、
@@ -16,11 +16,32 @@ const STORAGE_KEY = 'knak_google_id_token'
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const EXPIRY_MARGIN_SEC = 120
 
+// サーバーが返す理由コード → 画面に出す文言
+export const AUTH_MESSAGES = {
+  not_allowed: {
+    title: '登録されていないアカウントです',
+    body: 'このアプリは登録メンバー専用です。登録済みのGoogleアカウントでログインし直してください。',
+  },
+  login_required: {
+    title: 'ログインの有効期限が切れました',
+    body: 'お手数ですが、もう一度ログインしてください。',
+  },
+  unavailable: {
+    title: 'ただいま利用できません',
+    body: '時間をおいてもう一度お試しください。',
+  },
+  network: {
+    title: '接続できませんでした',
+    body: '通信状況を確認して、ページを開き直してください。',
+  },
+}
+
 let gisPromise = null
 let initialized = false
 let pending = []
 const listeners = new Set()
-let state = { signedIn: false, needLogin: false, email: '', error: '' }
+// error: AUTH_MESSAGES のキー（なければ空）
+let state = { signedIn: false, needLogin: false, email: '', error: '', rejectedEmail: '' }
 
 function setState(patch) {
   state = { ...state, ...patch }
@@ -92,7 +113,7 @@ function loadGis() {
     s.onload = () => resolve(window.google)
     s.onerror = () => {
       gisPromise = null
-      reject(new Error('Googleログインの読み込みに失敗しました。通信状況をご確認ください。'))
+      reject(new Error('gis_load_failed'))
     }
     document.head.appendChild(s)
   })
@@ -102,12 +123,9 @@ function loadGis() {
 function handleCredential(response) {
   const token = response?.credential
   const payload = token ? decodePayload(token) : null
-  if (!payload) {
-    setState({ error: 'ログインに失敗しました。もう一度お試しください。' })
-    return
-  }
+  if (!payload) return
   storeToken(token)
-  setState({ signedIn: true, needLogin: false, email: payload.email || '', error: '' })
+  setState({ signedIn: true, needLogin: false, email: payload.email || '', error: '', rejectedEmail: '' })
   const waiters = pending
   pending = []
   waiters.forEach((resolve) => resolve(token))
@@ -132,12 +150,21 @@ async function ensureInitialized() {
 export async function renderSignInButton(el) {
   const google = await ensureInitialized()
   el.innerHTML = ''
-  google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ja' })
+  google.accounts.id.renderButton(el, {
+    type: 'standard',
+    theme: 'outline',
+    size: 'large',
+    text: 'signin_with',
+    shape: 'pill',
+    logo_alignment: 'left',
+    width: 260,
+    locale: 'ja',
+  })
 }
 
 // 有効なIDトークンを返す。なければログインを促し、ログイン完了まで待つ。
 export async function requireIdToken() {
-  if (!GOOGLE_CLIENT_ID) throw new Error('VITE_GOOGLE_CLIENT_ID が設定されていません（.env.local を確認してください）')
+  if (!GOOGLE_CLIENT_ID) throw new Error('VITE_GOOGLE_CLIENT_ID が設定されていません（.env を確認してください）')
   const stored = readStoredToken()
   if (stored) {
     if (!state.signedIn || state.email !== stored.email) setState({ signedIn: true, email: stored.email })
@@ -148,10 +175,10 @@ export async function requireIdToken() {
   setState({ needLogin: true })
   try {
     const google = await ensureInitialized()
-    // 以前ログインした端末なら、ボタンを押さなくても自動でログインできることが多い
-    google.accounts.id.prompt()
-  } catch (e) {
-    setState({ error: e.message })
+    // 登録外アカウントで弾かれた直後は自動ログインさせない（同じアカウントで繰り返さないため）
+    if (state.error !== 'not_allowed') google.accounts.id.prompt()
+  } catch {
+    setState({ error: 'network' })
   }
   return promise
 }
@@ -160,10 +187,30 @@ export function hasValidToken() {
   return Boolean(readStoredToken())
 }
 
-// サーバーに拒否されたとき（期限切れ・許可されていないアカウント）
-export function invalidateToken(message) {
+// サーバーに拒否されたとき
+function handleRejection(code) {
+  const key = AUTH_MESSAGES[code] ? code : 'login_required'
+  const rejectedEmail = key === 'not_allowed' ? state.email : ''
   clearStoredToken()
-  setState({ signedIn: false, email: '', error: message || '' })
+  setState({ signedIn: false, email: '', error: key, rejectedEmail })
+  if (key === 'not_allowed') {
+    loadGis()
+      .then((google) => google.accounts.id.disableAutoSelect())
+      .catch(() => {})
+  }
+}
+
+// 別のアカウントでログインし直す
+export async function switchAccount() {
+  clearStoredToken()
+  setState({ signedIn: false, email: '', needLogin: true })
+  try {
+    const google = await ensureInitialized()
+    google.accounts.id.disableAutoSelect()
+    google.accounts.id.prompt()
+  } catch {
+    setState({ error: 'network' })
+  }
 }
 
 export async function signOut() {
@@ -174,21 +221,29 @@ export async function signOut() {
   } catch {
     /* noop */
   }
-  setState({ signedIn: false, email: '', needLogin: true, error: '' })
+  setState({ signedIn: false, email: '', needLogin: true, error: '', rejectedEmail: '' })
 }
 
-function isUnauthorized(json) {
-  return json && json.ok === false && /unauthorized/i.test(String(json.error || ''))
+function rejectionCode(json) {
+  if (!json || json.ok !== false) return ''
+  const m = String(json.error || '').match(/^unauthorized:?\s*([a-z_]*)/i)
+  return m ? m[1] || 'login_required' : ''
 }
 
 // IDトークンを付けてリクエストする。サーバーに拒否されたら1回だけログインし直して再実行する。
 //   fn: (idToken) => Promise<パース済みJSON>
 export async function withIdToken(fn) {
   const token = await requireIdToken()
-  const json = await fn(token)
-  if (!isUnauthorized(json)) return json
-  const reason = String(json.error || '').replace(/^unauthorized:?\s*/i, '')
-  invalidateToken('ログインできませんでした。' + (reason ? '（理由：' + reason + '）' : 'もう一度ログインしてください。'))
+  let json = await fn(token)
+  let code = rejectionCode(json)
+  if (!code) return json
+  handleRejection(code)
   const retryToken = await requireIdToken()
-  return fn(retryToken)
+  json = await fn(retryToken)
+  code = rejectionCode(json)
+  if (code) {
+    handleRejection(code)
+    setState({ needLogin: true })
+  }
+  return json
 }
