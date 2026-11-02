@@ -91,9 +91,12 @@ function annualLoanPayment(principal, ratePercent, years) {
 // 子どもがいない／まだ生まれていない場合は、全段階を上乗せした額（フルで働ける）とする
 function wifeIncomeAt(wife, children, t) {
   const ages = children.filter(c => c.enabled).map(c => Number(c.currentAge) + t)
-  const youngest = ages.length > 0 ? Math.min(...ages) : null
+  // 子どもなし → ベースのみ。出産前（最年長の子が0歳未満）→ 働いていないので0
+  if (ages.length === 0) return Number(wife.base)
+  if (Math.max(...ages) < 0) return 0
+  const youngest = Math.min(...ages)
   return (wife.stages || []).reduce(
-    (s, st) => s + ((youngest === null || youngest < 0 || youngest >= Number(st.fromAge)) ? Number(st.add) : 0),
+    (s, st) => s + (youngest >= Number(st.fromAge) ? Number(st.add) : 0),
     Number(wife.base)
   )
 }
@@ -108,7 +111,7 @@ function runSim(p, events) {
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn } = p
+          insuranceReturn, retireExpenseRate = 100 } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -135,7 +138,9 @@ function runSim(p, events) {
     const fundInvest    = retired ? 0 : monthlyFundInvest * 12
     const dcInvest      = retired ? 0 : monthlyDCInvest * 12
     const extra         = retired ? 0 : extraSaving * 12  // 追加必要積立額の逆算用
-    const annualExpense = ((monthlyExpense + monthlyRent) * 12 + yutoriAnnual) * infl
+    // 退職後は生活費（安心＋彩り）とときめき＋冒険を割合で調整。家賃は対象外
+    const livingRate    = retired ? retireExpenseRate / 100 : 1
+    const annualExpense = ((monthlyExpense * livingRate + monthlyRent) * 12 + yutoriAnnual * livingRate) * infl
     // 妻の年金は妻の年齢で受給開始（あなたの退職前に始まる場合も含む）
     const wifePension   = wifeAge + t >= wifePensionStartAge ? wifePensionMonthly * 12 * infl : 0
     const annualPension = (retired && hasPension ? pensionMonthly * 12 * infl : 0) + wifePension
@@ -303,6 +308,7 @@ export default function SimTab() {
     wifePensionMonthly:  0,  // 妻の年金（月額）
     wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
+    retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
   })
 
   const [vals, setVals] = useState({
@@ -531,6 +537,7 @@ export default function SimTab() {
     monthlyRent:     params.monthlyRent,
     pensionMonthly:  vals.pensionMonthly,
     insuranceReturn: vals.insuranceReturn,
+    retireExpenseRate: params.retireExpenseRate,
   }), [params, vals, wife])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
@@ -550,7 +557,8 @@ export default function SimTab() {
   const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
     - monthlyLiving * 12 - vals.monthlyFundInvest * 12
   const totalPension     = pensionMonthly + params.wifePensionMonthly
-  const monthlyShortfall = Math.max(0, monthlyLiving - totalPension)
+  const retireLiving     = (monthlyExpense + vals.yutoriAnnual / 12) * params.retireExpenseRate / 100 + params.monthlyRent
+  const monthlyShortfall = Math.max(0, retireLiving - totalPension)
 
   // ─── レンダリング ────────────────────────────────
   return (
@@ -590,6 +598,7 @@ export default function SimTab() {
             { label: '妻の現在年齢',     key: 'wifeAge',       unit: '歳' },
             { label: '妻の年金',         key: 'wifePensionMonthly',  unit: '円 / 月', note: 'ねんきん定期便の見込み額' },
             { label: '妻の年金開始年齢', key: 'wifePensionStartAge', unit: '歳（妻の年齢）' },
+            { label: '退職後の生活費',   key: 'retireExpenseRate', unit: '%', note: '現役時に対する割合。家賃は対象外' },
             { label: '家賃',             key: 'monthlyRent',   unit: '円 / 月', note: '老後も払う前提。マイホーム購入後は不要' },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
@@ -827,7 +836,7 @@ export default function SimTab() {
           <SumCard
             label="月の不足額"
             value={monthlyShortfall > 0 ? fmt(monthlyShortfall) : '不足なし ✓'}
-            sub="生活費 − 年金"
+            sub={`退職後の生活費（${params.retireExpenseRate}%）− 年金`}
             pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
           <SumCard
             label="資産が尽きる年齢"
