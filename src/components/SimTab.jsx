@@ -28,47 +28,131 @@ const formatYAxis = (v) => {
   return v === 0 ? '0' : `${v}`
 }
 
+// ─── 月平均支出 ──────────────────────────────────
+const EXPENSE_LOOKBACK_MONTHS = 24
+const NON_EXPENSE_CATEGORIES = ['ポイント', '収入・相殺', '対象外']
+
+// 過去24か月（当月＝途中月は除く）の月別支出から、外れ値（四分位範囲の1.5倍の外側）を除いて平均する。
+// 家賃は同じ月群の平均を別に返す（マイホーム購入後に支出から外すため）
+function calcMonthlyExpense(transactions, now = new Date()) {
+  const currentMonth = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`
+  const totals = {}
+  const rents = {}
+  for (const t of transactions) {
+    const month = (t.date || '').slice(0, 7)
+    if (!/^\d{4}\/\d{2}$/.test(month) || month >= currentMonth) continue
+    if (t.amount <= 0 || NON_EXPENSE_CATEGORIES.includes(t.category)) continue
+    totals[month] = (totals[month] || 0) + t.amount
+    if (t.category === '家賃') rents[month] = (rents[month] || 0) + t.amount
+  }
+  const months = Object.keys(totals).sort().reverse().slice(0, EXPENSE_LOOKBACK_MONTHS)
+  if (months.length === 0) return { monthlyExpense: 0, monthlyRent: 0, used: 0, excluded: [] }
+
+  let kept = months
+  if (months.length >= 4) {
+    const sorted = months.map(m => totals[m]).sort((a, b) => a - b)
+    const q = (p) => {
+      const i = (sorted.length - 1) * p
+      return sorted[Math.floor(i)] + (sorted[Math.ceil(i)] - sorted[Math.floor(i)]) * (i % 1)
+    }
+    const q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1
+    kept = months.filter(m => totals[m] >= q1 - 1.5 * iqr && totals[m] <= q3 + 1.5 * iqr)
+  }
+  const avg = (vals) => Math.round(vals.reduce((s, v) => s + v, 0) / kept.length)
+  return {
+    monthlyExpense: avg(kept.map(m => totals[m])),
+    monthlyRent:    avg(kept.map(m => rents[m] || 0)),
+    used:           kept.length,
+    excluded:       months.filter(m => !kept.includes(m)),
+  }
+}
+
 // ─── シミュレーション計算 ─────────────────────────
-function runSim(startAge, endAge, startAssets, retireAge, pensionStartAge,
-                ratePercent, monthlyInvest, monthlyExpense, pensionMonthly,
-                insuranceReturn, events) {
+const homePrice = (home) => Number(home.landPrice) + Number(home.buildingPrice)
+
+// 元利均等返済の年間返済額
+function annualLoanPayment(principal, ratePercent, years) {
+  if (principal <= 0 || years <= 0) return 0
+  const i = (ratePercent || 0) / 100 / 12
+  const n = years * 12
+  const monthly = i === 0 ? principal / n : principal * i / (1 - (1 + i) ** -n)
+  return monthly * 12
+}
+
+// 資産は「預金」と「投資（投信＋DC）」に分けて別の利回りで増やす。
+// 積立は投資へ、支出・イベント費用は預金から払い、預金が尽きたら投資を取り崩す。
+// 支出・年金・イベント費用は物価上昇率で毎年膨らませる（ローン返済額は固定）。
+function runSim(p, events) {
+  const { startAge, endAge, cashAssets, investAssets, retireAge, pensionStartAge,
+          returnRate, cashRate, inflationRate, monthlyInvest, monthlyExpense, monthlyRent,
+          pensionMonthly, insuranceReturn } = p
   if (endAge < startAge) return []
-  const r     = (ratePercent || 0) / 100
-  let assets  = startAssets
-  const data  = []
+  const rInvest = (returnRate || 0) / 100
+  const rCash   = (cashRate || 0) / 100
+  let cash   = cashAssets
+  let invest = investAssets
+  const data = []
+
+  const home = events?.home
+  const homeLoan = home?.enabled
+    ? annualLoanPayment(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears))
+    : 0
 
   for (let age = startAge; age <= endAge; age++) {
-    data.push({ age, assets: Math.round(assets) })
+    data.push({ age, assets: Math.round(cash + invest) })
 
+    const t          = age - startAge
+    const infl       = (1 + (inflationRate || 0) / 100) ** t
     const retired    = age >= retireAge
     const hasPension = age >= pensionStartAge
 
     const annualInvest  = retired ? 0 : monthlyInvest * 12
-    const annualExpense = retired ? monthlyExpense * 12 : 0
-    const annualPension = retired && hasPension ? pensionMonthly * 12 : 0
-    const interest      = assets * r
+    const annualExpense = retired ? monthlyExpense * 12 * infl : 0
+    const annualPension = retired && hasPension ? pensionMonthly * 12 * infl : 0
 
     // ライフイベントコスト
     let eventCost = 0
     if (events) {
       for (const child of [events.child1, events.child2]) {
         if (!child.enabled) continue
-        const childAge = child.currentAge + (age - startAge)
+        const childAge = child.currentAge + t
         if (childAge >= 6 && childAge < 22) {
-          eventCost += EDU_COST[child.edu] / 16
+          eventCost += EDU_COST[child.edu] / 16 * infl
         }
       }
       const c = events.car
-      if (c.enabled) {
-        if (age === startAge + Number(c.yearsFromNow)) eventCost += Number(c.price)
-        eventCost += Number(c.monthlyFee) * 12
+      // 手放す年齢（0なら手放さない）以降は買い替えも維持費もかからない
+      const sellAge = Number(c.sellAge)
+      if (c.enabled && !(sellAge > 0 && age >= sellAge)) {
+        const first = Number(c.yearsFromNow)
+        const cycle = Number(c.replaceEvery)
+        const isPurchase = t === first || (cycle > 0 && t > first && (t - first) % cycle === 0)
+        if (isPurchase) eventCost += Number(c.price) * infl
+        if (t >= first) eventCost += Number(c.monthlyFee) * 12 * infl
+      }
+      if (home?.enabled) {
+        const bought = Number(home.yearsFromNow)
+        // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
+        if (t === bought) eventCost += Number(home.downPayment) + homePrice(home) * Number(home.feeRate) / 100
+        if (t >= bought && t < bought + Number(home.loanYears)) eventCost += homeLoan
+        if (t >= bought) {
+          eventCost += Number(home.monthlyCost) * 12 * infl
+          // 購入後は家賃が不要になる分、手元に残る
+          if (home.stopRent) eventCost -= monthlyRent * 12 * infl
+        }
       }
     }
 
     // 退職時に保険返戻金を一括加算
     const lump = age === retireAge && insuranceReturn > 0 ? insuranceReturn : 0
 
-    assets = assets + interest + annualInvest - annualExpense + annualPension - eventCost + lump
+    invest += Math.max(0, invest) * rInvest + annualInvest
+    cash   += Math.max(0, cash) * rCash - annualExpense + annualPension - eventCost + lump
+    if (cash < 0 && invest > 0) {
+      const draw = Math.min(invest, -cash)
+      invest -= draw
+      cash   += draw
+    }
   }
   return data
 }
@@ -80,11 +164,9 @@ function findZeroAge(data) {
   return null
 }
 
-function calcRequiredExtra(startAge, endAge, startAssets, retireAge, pensionStartAge,
-                            rate, monthlyInvest, monthlyExpense, pensionMonthly, insuranceReturn) {
+function calcRequiredExtra(simParams) {
   const sim = (extra) => {
-    const d = runSim(startAge, endAge, startAssets, retireAge, pensionStartAge,
-                     rate, monthlyInvest + extra, monthlyExpense, pensionMonthly, insuranceReturn, null)
+    const d = runSim({ ...simParams, monthlyInvest: simParams.monthlyInvest + extra }, null)
     return d.length ? d[d.length - 1].assets : 0
   }
   if (sim(0) >= 0) return 0
@@ -133,6 +215,21 @@ function ChildEvent({ label, state, onChange }) {
   )
 }
 
+function EventNumField({ label, unit, value, onChange, wide, step }) {
+  return (
+    <label className="sim-ef">
+      <span className="sim-ef-label">{label}</span>
+      <div className="sim-ef-row">
+        <input type="number" step={step}
+          className={`sim-mini-input${wide ? ' sim-mini-input--wide' : ''}`}
+          value={value}
+          onChange={e => onChange(Number(e.target.value) || 0)} />
+        <span className="sim-ef-unit">{unit}</span>
+      </div>
+    </label>
+  )
+}
+
 function SumCard({ label, value, sub, pos, neg }) {
   return (
     <div className={`sim-sum-card${pos ? ' pos' : neg ? ' neg' : ''}`}>
@@ -164,24 +261,33 @@ export default function SimTab() {
     currentAge:     new Date().getFullYear() - BIRTH_YEAR,
     retireAge:      65,
     lifeExpectancy: 90,
-    returnRate:      5,
+    returnRate:      5,    // 投資（投信＋DC）の想定利回り
+    cashRate:        0.2,  // 預金金利
+    inflationRate:   2,    // 物価上昇率（日銀の物価目標）
     pensionStartAge: 65,
   })
 
   const [vals, setVals] = useState({
-    totalAssets:       0,
+    cashAssets:        0,
+    investAssets:      0,
     monthlyInvestment: 0,
     monthlyExpense:    0,
+    monthlyRent:       0,
     pensionMonthly:    0,
     insuranceReturn:   0,
   })
+  const [expenseNote, setExpenseNote] = useState('過去24か月平均')
 
   const [loadStatus, setLoadStatus] = useState('idle')
   const [loadMsg,    setLoadMsg]    = useState('')
 
   const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立' })
   const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立' })
-  const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000 })
+  const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
+  const [home,   setHome]   = useState({
+    enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
+    loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true,
+  })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
 
@@ -192,12 +298,12 @@ export default function SimTab() {
         gasApi.getAssets(),
         gasApi.getInvestmentFunds(),
         gasApi.getDCAccounts(),
-        gasApi.getMonths(),
+        gasApi.getTransactions(''),
         gasApi.getPensionData(),
         gasApi.getInsurances(),
         fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=JPY').then(r => r.json()).catch(() => null),
       ])
-      const [assetsRes, fundsRes, dcRes, monthsRes, pensionRes, insRes, rateRes] =
+      const [assetsRes, fundsRes, dcRes, txRes, pensionRes, insRes, rateRes] =
         settled.map(r => r.status === 'fulfilled' ? r.value : null)
 
       // 総資産: 口座ごとに最新の非空金額を合計（空月レコードをスキップ）
@@ -219,7 +325,13 @@ export default function SimTab() {
         if (!fundLatest[key] || r['年月'] > fundLatest[key]['年月']) fundLatest[key] = r
       })
       const totalFunds = Object.values(fundLatest).reduce((s, r) => s + parseAmt(r['評価額']), 0)
-      const totalAssets = depositAssets + totalFunds
+      // DC: 運用機関ごとに最新評価額を合計
+      const dcLatest = {}
+      ;(dcRes?.records || []).forEach(r => {
+        const key = r['運用機関']
+        if (!dcLatest[key] || r['年月'] > dcLatest[key]['年月']) dcLatest[key] = r
+      })
+      const totalDC = Object.values(dcLatest).reduce((s, r) => s + parseAmt(r['評価額']), 0)
 
       // 月額積立: 投資信託 + DC（新スキーマ対応、旧スキーマもフォールバック）
       const monthlyFunds = (fundsRes?.masters || []).reduce((s, m) => {
@@ -236,20 +348,11 @@ export default function SimTab() {
       const monthlyDC = (dcRes?.masters || []).reduce((s, m) =>
         s + parseAmt(m['会社掛金(円/月)']) + parseAmt(m['自己掛金(円/月)']), 0)
 
-      // 月平均支出: 直近3ヶ月平均（出金合計）
-      const recentMonths = (monthsRes?.months || []).slice(0, 3)
-      let monthlyExpense = 0
-      if (recentMonths.length > 0) {
-        const txResults = await Promise.allSettled(recentMonths.map(m => gasApi.getTransactions(m)))
-        const totals = txResults
-          .filter(r => r.status === 'fulfilled')
-          .map(r => (r.value.transactions || []).reduce((s, t) => {
-            if (t.amount > 0 && t.category !== 'ポイント' && t.category !== '収入・相殺') return s + t.amount
-            return s
-          }, 0))
-        if (totals.length > 0)
-          monthlyExpense = Math.round(totals.reduce((a, b) => a + b, 0) / totals.length)
-      }
+      // 月平均支出: 過去24か月（途中月・外れ値・対象外を除く）
+      const { monthlyExpense, monthlyRent, used, excluded } = calcMonthlyExpense(txRes?.transactions || [])
+      setExpenseNote(
+        `過去${used}か月平均` + (excluded.length ? `（外れ値 ${excluded.map(m => m.replace('/', '-')).join('・')} を除外）` : '')
+      )
 
       // 年金: 最新レコード
       const pRecs = (pensionRes?.records || [])
@@ -281,7 +384,13 @@ export default function SimTab() {
       const insuranceReturn = Math.round(totalInsUSD * usdJpy)
 
       setParams(p => ({ ...p, currentAge: currentAgeNow }))
-      setVals(v => ({ ...v, totalAssets, monthlyInvestment: monthlyFunds + monthlyDC, monthlyExpense, pensionMonthly, insuranceReturn }))
+      setVals(v => ({
+        ...v,
+        cashAssets: depositAssets,
+        investAssets: totalFunds + totalDC,
+        monthlyInvestment: monthlyFunds + monthlyDC,
+        monthlyExpense, monthlyRent, pensionMonthly, insuranceReturn,
+      }))
       setLoadStatus('done')
       setLoadMsg('データを取得しました（各項目は手動で上書き可能です）')
     } catch (e) {
@@ -292,27 +401,35 @@ export default function SimTab() {
   const updP = (k) => (e) => setParams(p => ({ ...p, [k]: Number(e.target.value) || 0 }))
   const updV = (k) => (e) => setVals(p => ({ ...p, [k]: parseAmt(e.target.value) }))
 
-  const { currentAge, retireAge, lifeExpectancy, returnRate, pensionStartAge } = params
-  const { totalAssets, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn } = vals
+  const { retireAge, lifeExpectancy, pensionStartAge } = params
+  const { cashAssets, investAssets, monthlyExpense, pensionMonthly } = vals
 
   // ─── シミュレーション ────────────────────────────
-  const { simBase, simEvents, hasEvents } = useMemo(() => {
-    const h    = child1.enabled || child2.enabled || car.enabled
-    const base = runSim(currentAge, lifeExpectancy, totalAssets, retireAge, pensionStartAge,
-                        returnRate, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn, null)
-    const ev   = h ? runSim(currentAge, lifeExpectancy, totalAssets, retireAge, pensionStartAge,
-                            returnRate, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn,
-                            { child1, child2, car }) : null
-    return { simBase: base, simEvents: ev, hasEvents: h }
-  }, [currentAge, lifeExpectancy, totalAssets, retireAge, pensionStartAge,
-      returnRate, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn,
-      child1, child2, car])
+  const simParams = useMemo(() => ({
+    startAge:        params.currentAge,
+    endAge:          params.lifeExpectancy,
+    retireAge:       params.retireAge,
+    pensionStartAge: params.pensionStartAge,
+    returnRate:      params.returnRate,
+    cashRate:        params.cashRate,
+    inflationRate:   params.inflationRate,
+    cashAssets:      vals.cashAssets,
+    investAssets:    vals.investAssets,
+    monthlyInvest:   vals.monthlyInvestment,
+    monthlyExpense:  vals.monthlyExpense,
+    monthlyRent:     vals.monthlyRent,
+    pensionMonthly:  vals.pensionMonthly,
+    insuranceReturn: vals.insuranceReturn,
+  }), [params, vals])
 
-  const requiredExtra = useMemo(() =>
-    calcRequiredExtra(currentAge, lifeExpectancy, totalAssets, retireAge, pensionStartAge,
-                      returnRate, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn),
-    [currentAge, lifeExpectancy, totalAssets, retireAge, pensionStartAge,
-     returnRate, monthlyInvestment, monthlyExpense, pensionMonthly, insuranceReturn])
+  const { simBase, simEvents, hasEvents } = useMemo(() => {
+    const h    = child1.enabled || child2.enabled || car.enabled || home.enabled
+    const base = runSim(simParams, null)
+    const ev   = h ? runSim(simParams, { child1, child2, car, home }) : null
+    return { simBase: base, simEvents: ev, hasEvents: h }
+  }, [simParams, child1, child2, car, home])
+
+  const requiredExtra = useMemo(() => calcRequiredExtra(simParams), [simParams])
 
   const chartData = useMemo(() =>
     simBase.map((d, i) => ({
@@ -353,12 +470,17 @@ export default function SimTab() {
             { label: '現在年齢',     key: 'currentAge',     unit: '歳' },
             { label: '退職予定年齢', key: 'retireAge',       unit: '歳' },
             { label: '平均寿命',     key: 'lifeExpectancy',  unit: '歳' },
-            { label: '想定運用利率', key: 'returnRate',      unit: '% / 年' },
-          ].map(({ label, key, unit }) => (
+            { label: '投資の想定利回り', key: 'returnRate',    unit: '% / 年', note: '投信＋DC' },
+            { label: '預金金利',         key: 'cashRate',      unit: '% / 年' },
+            { label: '物価上昇率',       key: 'inflationRate', unit: '% / 年', note: '日銀の物価目標2%' },
+          ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
-              <span className="sim-field-label">{label}</span>
+              <span className="sim-field-label">
+                {label}
+                {note && <span className="sim-field-note">{note}</span>}
+              </span>
               <div className="sim-field-row">
-                <input type="number" className="sim-num-input" value={params[key]} onChange={updP(key)} />
+                <input type="number" step="0.1" className="sim-num-input" value={params[key]} onChange={updP(key)} />
                 <span className="sim-field-unit">{unit}</span>
               </div>
             </label>
@@ -386,9 +508,11 @@ export default function SimTab() {
         </h3>
         <div className="sim-fields">
           {[
-            { label: '現在の総資産',    key: 'totalAssets',       unit: '円',       note: '預金＋投信' },
+            { label: '預金',            key: 'cashAssets',        unit: '円',       note: '預金金利で増える' },
+            { label: '投資資産',        key: 'investAssets',      unit: '円',       note: '投信＋DC評価額' },
             { label: '月額積立額',      key: 'monthlyInvestment', unit: '円 / 月',  note: '投信 + DC' },
-            { label: '月平均支出',      key: 'monthlyExpense',    unit: '円 / 月',  note: '直近3ヶ月平均' },
+            { label: '月平均支出',      key: 'monthlyExpense',    unit: '円 / 月',  note: expenseNote },
+            { label: 'うち家賃',        key: 'monthlyRent',       unit: '円 / 月',  note: 'マイホーム購入後は不要に' },
             { label: '年金受給見込み',  key: 'pensionMonthly',    unit: '円 / 月',  note: '年金タブより' },
             { label: '保険返戻予定額',  key: 'insuranceReturn',   unit: '円（一括）', note: '外貨保険/退職年度USD換算' },
           ].map(({ label, key, unit, note }) => (
@@ -447,6 +571,47 @@ export default function SimTab() {
                     <span className="sim-ef-unit">円 / 月</span>
                   </div>
                 </label>
+                <EventNumField label="買い替え" unit="年ごと（0で買い替えなし）"
+                  value={car.replaceEvery} onChange={v => setCar(p => ({ ...p, replaceEvery: v }))} />
+                <EventNumField label="手放す年齢" unit="歳（0で手放さない）"
+                  value={car.sellAge} onChange={v => setCar(p => ({ ...p, sellAge: v }))} />
+              </div>
+            )}
+          </div>
+
+          <div className="sim-event">
+            <button
+              className={`sim-event-toggle${home.enabled ? ' active' : ''}`}
+              onClick={() => setHome(p => ({ ...p, enabled: !p.enabled }))}>
+              🏠 マイホーム
+            </button>
+            {home.enabled && (
+              <div className="sim-event-body">
+                <EventNumField label="購入まで" unit="年後"
+                  value={home.yearsFromNow} onChange={v => setHome(p => ({ ...p, yearsFromNow: v }))} />
+                <EventNumField label="土地" unit="円" wide
+                  value={home.landPrice} onChange={v => setHome(p => ({ ...p, landPrice: v }))} />
+                <EventNumField label="建物" unit="円" wide
+                  value={home.buildingPrice} onChange={v => setHome(p => ({ ...p, buildingPrice: v }))} />
+                <EventNumField label="頭金" unit="円" wide
+                  value={home.downPayment} onChange={v => setHome(p => ({ ...p, downPayment: v }))} />
+                <EventNumField label="諸経費" unit="% （物件価格に対して）" step="0.5"
+                  value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />
+                <EventNumField label="ローン期間" unit="年"
+                  value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
+                <EventNumField label="ローン金利" unit="% / 年" step="0.05"
+                  value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
+                <EventNumField label="管理費・修繕・税" unit="円 / 月"
+                  value={home.monthlyCost} onChange={v => setHome(p => ({ ...p, monthlyCost: v }))} />
+                <label className="sim-ef sim-ef--check">
+                  <input type="checkbox" checked={home.stopRent}
+                    onChange={e => setHome(p => ({ ...p, stopRent: e.target.checked }))} />
+                  <span className="sim-ef-label">購入後は家賃（{fmt(vals.monthlyRent)}/月）がなくなる</span>
+                </label>
+                <p className="sim-ef-note">
+                  物件価格 {fmt(homePrice(home))} ／ 諸経費 {fmt(homePrice(home) * home.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(home) - home.downPayment, home.loanRate, home.loanYears) / 12)}
+                  （価格は購入時の金額。ローン返済額は物価上昇させない）
+                </p>
               </div>
             )}
           </div>
@@ -535,7 +700,7 @@ export default function SimTab() {
       {/* AI診断 */}
       <AIDiag
         simParams={params}
-        simVals={vals}
+        simVals={{ ...vals, totalAssets: cashAssets + investAssets }}
         simResults={{
           retireAssets,
           zeroAge:          zeroAgeBase,

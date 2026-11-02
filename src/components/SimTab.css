@@ -214,6 +214,20 @@
   width: 120px;
 }
 
+.sim-ef--check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.sim-ef-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.72rem;
+  color: #999;
+}
+
 .sim-mini-input:focus {
   outline: none;
   border-color: #F47920;
