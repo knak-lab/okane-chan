@@ -80,8 +80,18 @@ export const gasApi = {
     return post({ action: 'saveTransactions', transactions: rows })
   },
 
-  updateTransactionCategory: (txId, category) =>
-    post({ action: 'updateTransactionCategory', txId, category }),
+  // 同じ取引番号の支払い行とポイント行を区別するため、取引日・金額も送って行を特定する
+  updateTransactionCategory: (t, category) =>
+    post({
+      action: 'updateTransactionCategory',
+      txId: t.id,
+      category,
+      match: {
+        '取引日':         t['取引日'],
+        '出金金額（円）': t['出金金額（円）'],
+        '入金金額（円）': t['入金金額（円）'],
+      },
+    }),
 
   clearMonth: (month) => post({ action: 'clearMonth', month }),
 

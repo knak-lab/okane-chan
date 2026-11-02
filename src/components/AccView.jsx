@@ -14,6 +14,9 @@ const monthDataCacheKey = (month) => `acc:month:${month}`
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
 const CUMULATIVE = '累計'
 
+// 取引の行を特定するキー。PayPayは支払いと付与ポイントが同じ取引番号になるため、日付・金額も含める
+const txRowKey = (t) => [t.id, t['取引日'], t['出金金額（円）'], t['入金金額（円）']].join('|')
+
 function getFiscalPriorMonths(selectedMonth, availableMonths) {
   const year = selectedMonth.split('-')[0]
   const fiscalStart = `${year}-01`
@@ -38,7 +41,7 @@ export default function AccView() {
   const [commonAccounts, setCommonAccounts] = useState([])
   const [openBucket, setOpenBucket] = useState(null)
   const [lastImportedAt, setLastImportedAt] = useState('')
-  // 明細でカテゴリ編集中の取引: { id, category, keyword }
+  // 明細でカテゴリ編集中の取引: { key, category, keyword }
   const [editDraft, setEditDraft] = useState(null)
   const [catSave, setCatSave] = useState({ id: null, status: 'idle', msg: '' })
 
@@ -137,7 +140,8 @@ export default function AccView() {
   // 取引の保存に失敗したら元のカテゴリに戻す。
   const handleCategoryChange = async (tx, newCategory, ruleKeyword) => {
     if (!tx.id || newCategory === tx.category) return
-    const replace = (category) => (list) => list.map(t => t.id === tx.id ? { ...t, category } : t)
+    const key = txRowKey(tx)
+    const replace = (category) => (list) => list.map(t => txRowKey(t) === key ? { ...t, category } : t)
     setTransactions(replace(newCategory))
     setAnnualTx(replace(newCategory))
     setEditDraft(null)
@@ -145,7 +149,7 @@ export default function AccView() {
     // ルールは送信失敗しても端末に保留され、次回起動時に再送される
     const ruleSync = ruleKeyword ? saveCustomRule(ruleKeyword, newCategory).then(() => '', e => e.message) : null
     try {
-      await gasApi.updateTransactionCategory(tx.id, newCategory)
+      await gasApi.updateTransactionCategory(tx, newCategory)
       // 次回起動時に古いカテゴリが一瞬表示されないよう、この月のキャッシュも書き換える
       const cacheKey = monthDataCacheKey(displayMonth)
       const cached = readCache(cacheKey)
@@ -383,15 +387,16 @@ export default function AccView() {
                               </thead>
                               <tbody>
                                 {detail.map(t => {
-                                  const isEditing = editDraft?.id === t.id
+                                  const rowKey = txRowKey(t)
+                                  const isEditing = editDraft?.key === rowKey
                                   const changed = isEditing && editDraft.category !== t.category
                                   const keyword = isEditing ? editDraft.keyword.trim() : ''
                                   return (
-                                    <Fragment key={t.id}>
+                                    <Fragment key={rowKey}>
                                       <tr
                                         className={t.id ? 'acc-detail-row--editable' : undefined}
                                         onClick={() => t.id && setEditDraft(isEditing ? null : {
-                                          id: t.id, category: t.category, keyword: t.description,
+                                          key: rowKey, category: t.category, keyword: t.description,
                                         })}
                                       >
                                         <td className="acc-detail-date">{t.date}</td>

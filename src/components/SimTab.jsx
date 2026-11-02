@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
+import { BUCKET_CONFIG } from '../config/budget'
 import AIDiag from './AIDiag'
 import './SimTab.css'
 
@@ -37,23 +38,24 @@ const formatYAxis = (v) => {
 
 // ─── 月平均支出 ──────────────────────────────────
 const EXPENSE_LOOKBACK_MONTHS = 24
-const NON_EXPENSE_CATEGORIES = ['ポイント', '収入・相殺', '対象外']
+// 生活費＝安心ライフ費＋暮らしの彩り費のカテゴリの実績。
+// 家賃はPayPay外の振込が多いのでパラメータ、ときめき＋冒険は年間タブの年額を別に足す。妊活は一時的な支出なので含めない
+const LIVING_BUCKETS = ['安心ライフ費', '暮らしの彩り費']
+const YUTORI_BUCKETS = ['ときめきチョイス費', '冒険予算']
+const LIVING_CATEGORIES = BUCKET_CONFIG.filter(b => LIVING_BUCKETS.includes(b.name)).flatMap(b => b.categories)
 
 // 過去24か月（当月＝途中月は除く）の月別支出から、外れ値（四分位範囲の1.5倍の外側）を除いて平均する。
-// 家賃は同じ月群の平均を別に返す（マイホーム購入後に支出から外すため）
 function calcMonthlyExpense(transactions, now = new Date()) {
   const currentMonth = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`
   const totals = {}
-  const rents = {}
   for (const t of transactions) {
     const month = (t.date || '').slice(0, 7)
     if (!/^\d{4}\/\d{2}$/.test(month) || month >= currentMonth) continue
-    if (t.amount <= 0 || NON_EXPENSE_CATEGORIES.includes(t.category)) continue
+    if (t.amount <= 0 || !LIVING_CATEGORIES.includes(t.category)) continue
     totals[month] = (totals[month] || 0) + t.amount
-    if (t.category === '家賃') rents[month] = (rents[month] || 0) + t.amount
   }
   const months = Object.keys(totals).sort().reverse().slice(0, EXPENSE_LOOKBACK_MONTHS)
-  if (months.length === 0) return { monthlyExpense: 0, monthlyRent: 0, used: 0, excluded: [] }
+  if (months.length === 0) return { monthlyExpense: 0, used: 0, excluded: [] }
 
   let kept = months
   if (months.length >= 4) {
@@ -68,7 +70,6 @@ function calcMonthlyExpense(transactions, now = new Date()) {
   const avg = (vals) => Math.round(vals.reduce((s, v) => s + v, 0) / kept.length)
   return {
     monthlyExpense: avg(kept.map(m => totals[m])),
-    monthlyRent:    avg(kept.map(m => rents[m] || 0)),
     used:           kept.length,
     excluded:       months.filter(m => !kept.includes(m)),
   }
@@ -86,13 +87,28 @@ function annualLoanPayment(principal, ratePercent, years) {
   return monthly * 12
 }
 
+// 妻の手取り年収。末っ子の年齢が各段階に達するごとに上乗せする。
+// 子どもがいない／まだ生まれていない場合は、全段階を上乗せした額（フルで働ける）とする
+function wifeIncomeAt(wife, children, t) {
+  const ages = children.filter(c => c.enabled).map(c => Number(c.currentAge) + t)
+  const youngest = ages.length > 0 ? Math.min(...ages) : null
+  return (wife.stages || []).reduce(
+    (s, st) => s + ((youngest === null || youngest < 0 || youngest >= Number(st.fromAge)) ? Number(st.add) : 0),
+    Number(wife.base)
+  )
+}
+
 // 資産は「預金」と「投資（投信＋DC）」に分けて別の利回りで増やす。
-// 積立は投資へ、支出・イベント費用は預金から払い、預金が尽きたら投資を取り崩す。
-// 支出・年金・イベント費用は物価上昇率で毎年膨らませる（ローン返済額は固定）。
+// 退職前：手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
+//         DC掛金は給与天引き・会社拠出なので手取りからは引かず、投資に直接入る。
+// 退職後：生活費を預金から払い、年金を受け取る。預金が尽きたら投資を取り崩す。
+// 支出・年金・イベント費用は物価上昇率、収入は収入の伸び率で毎年増やす（ローン返済額は固定）。
 function runSim(p, events) {
   const { startAge, endAge, cashAssets, investAssets, retireAge, pensionStartAge,
-          returnRate, cashRate, inflationRate, monthlyInvest, monthlyExpense, monthlyRent,
-          pensionMonthly, insuranceReturn } = p
+          returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
+          monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
+          yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
+          insuranceReturn } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -113,9 +129,16 @@ function runSim(p, events) {
     const retired    = age >= retireAge
     const hasPension = age >= pensionStartAge
 
-    const annualInvest  = retired ? 0 : monthlyInvest * 12
-    const annualExpense = retired ? monthlyExpense * 12 * infl : 0
-    const annualPension = retired && hasPension ? pensionMonthly * 12 * infl : 0
+    const growth        = (1 + (incomeGrowth || 0) / 100) ** t
+    const children      = events ? [events.child1, events.child2] : []
+    const annualIncome  = retired ? 0 : (myIncome + wifeIncomeAt(wife, children, t)) * growth
+    const fundInvest    = retired ? 0 : monthlyFundInvest * 12
+    const dcInvest      = retired ? 0 : monthlyDCInvest * 12
+    const extra         = retired ? 0 : extraSaving * 12  // 追加必要積立額の逆算用
+    const annualExpense = ((monthlyExpense + monthlyRent) * 12 + yutoriAnnual) * infl
+    // 妻の年金は妻の年齢で受給開始（あなたの退職前に始まる場合も含む）
+    const wifePension   = wifeAge + t >= wifePensionStartAge ? wifePensionMonthly * 12 * infl : 0
+    const annualPension = (retired && hasPension ? pensionMonthly * 12 * infl : 0) + wifePension
 
     // ライフイベントコスト
     let eventCost = 0
@@ -153,8 +176,8 @@ function runSim(p, events) {
     // 退職時に保険返戻金を一括加算
     const lump = age === retireAge && insuranceReturn > 0 ? insuranceReturn : 0
 
-    invest += Math.max(0, invest) * rInvest + annualInvest
-    cash   += Math.max(0, cash) * rCash - annualExpense + annualPension - eventCost + lump
+    invest += Math.max(0, invest) * rInvest + fundInvest + dcInvest + extra
+    cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost + lump
     if (cash < 0 && invest > 0) {
       const draw = Math.min(invest, -cash)
       invest -= draw
@@ -173,7 +196,7 @@ function findZeroAge(data) {
 
 function calcRequiredExtra(simParams) {
   const sim = (extra) => {
-    const d = runSim({ ...simParams, monthlyInvest: simParams.monthlyInvest + extra }, null)
+    const d = runSim({ ...simParams, extraSaving: extra }, null)
     return d.length ? d[d.length - 1].assets : 0
   }
   if (sim(0) >= 0) return 0
@@ -201,10 +224,10 @@ function ChildEvent({ label, state, onChange }) {
           <label className="sim-ef">
             <span className="sim-ef-label">現在年齢</span>
             <div className="sim-ef-row">
-              <input type="number" className="sim-mini-input" min="0" max="21"
+              <input type="number" className="sim-mini-input" max="21"
                 value={state.currentAge}
                 onChange={e => onChange(p => ({ ...p, currentAge: Number(e.target.value) || 0 }))} />
-              <span className="sim-ef-unit">歳</span>
+              <span className="sim-ef-unit">歳（生まれる前は −2 など）</span>
             </div>
           </label>
           <label className="sim-ef">
@@ -271,23 +294,37 @@ export default function SimTab() {
     returnRate:      5,    // 投資（投信＋DC）の想定利回り
     cashRate:        0.2,  // 預金金利
     inflationRate:   2,    // 物価上昇率（日銀の物価目標）
+    monthlyRent:     95_000, // 家賃（PayPay外の振込が多いので手入力）
+    incomeGrowth:    1,    // 手取り収入の伸び率（昇給）
+    wifeAge:             40, // 妻の現在年齢
+    wifePensionMonthly:  0,  // 妻の年金（月額）
+    wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
   })
 
   const [vals, setVals] = useState({
     cashAssets:        0,
     investAssets:      0,
-    monthlyInvestment: 0,
+    myIncome:          0,  // 本人の手取り年収（年間タブの給与＋ボーナス）
+    monthlyFundInvest: 0,  // 投信積立（手取りから払う）
+    monthlyDCInvest:   0,  // DC掛金（給与天引き・会社拠出）
     monthlyExpense:    0,
-    monthlyRent:       0,
+    yutoriAnnual:      0,  // ときめき＋冒険の年額（年間タブ）
     pensionMonthly:    0,
     insuranceReturn:   0,
   })
   const [expenseNote, setExpenseNote] = useState('過去24か月平均')
+  const [incomeNote, setIncomeNote]   = useState('年間タブの給与＋ボーナス')
+  const [yutoriNote, setYutoriNote]   = useState('年間タブの年額')
 
   const [loadStatus, setLoadStatus] = useState('idle')
   const [loadMsg,    setLoadMsg]    = useState('')
 
+  // 妻の手取り年収：基本額＋末っ子が各年齢に達したら上乗せ
+  const [wife, setWife] = useState({
+    base: 0,
+    stages: [{ fromAge: 3, add: 0 }, { fromAge: 6, add: 0 }, { fromAge: 12, add: 0 }],
+  })
   const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立' })
   const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立' })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
@@ -306,7 +343,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, child1, child2, car, home })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -320,6 +357,7 @@ export default function SimTab() {
           if (s.child2) setChild2(c => ({ ...c, ...s.child2 }))
           if (s.car)    setCar(c => ({ ...c, ...s.car }))
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
+          if (s.wife)   setWife(w => ({ ...w, ...s.wife }))
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -352,8 +390,9 @@ export default function SimTab() {
         gasApi.getPensionData(),
         gasApi.getInsurances(),
         fetch('https://api.frankfurter.dev/v1/latest?from=USD&to=JPY').then(r => r.json()).catch(() => null),
+        gasApi.getAnnualPlan(new Date().getFullYear()),
       ])
-      const [assetsRes, fundsRes, dcRes, txRes, pensionRes, insRes, rateRes] =
+      const [assetsRes, fundsRes, dcRes, txRes, pensionRes, insRes, rateRes, planRes] =
         settled.map(r => r.status === 'fulfilled' ? r.value : null)
 
       // 総資産: 口座ごとに最新の非空金額を合計（空月レコードをスキップ）
@@ -399,10 +438,19 @@ export default function SimTab() {
         s + parseAmt(m['会社掛金(円/月)']) + parseAmt(m['自己掛金(円/月)']), 0)
 
       // 月平均支出: 過去24か月（途中月・外れ値・対象外を除く）
-      const { monthlyExpense, monthlyRent, used, excluded } = calcMonthlyExpense(txRes?.transactions || [])
+      const { monthlyExpense, used, excluded } = calcMonthlyExpense(txRes?.transactions || [])
       setExpenseNote(
-        `過去${used}か月平均` + (excluded.length ? `（外れ値 ${excluded.map(m => m.replace('/', '-')).join('・')} を除外）` : '')
+        `安心＋彩りの過去${used}か月平均` + (excluded.length ? `（外れ値 ${excluded.map(m => m.replace('/', '-')).join('・')} を除外）` : '')
       )
+
+      // 本人の手取り年収: 今年の年間計画の給与＋ボーナス（12か月分）
+      const plan = planRes?.plan
+      const myIncome = ['収入_給与', '収入_ボーナス']
+        .reduce((s, k) => s + (plan?.[k] || []).reduce((a, v) => a + (Number(v) || 0), 0), 0)
+      setIncomeNote(plan ? `年間タブ ${new Date().getFullYear()}年の給与＋ボーナス` : '年間タブに今年の計画がありません')
+      // ときめき＋冒険: 年間タブの年額（4月列に総額が入っている）
+      const yutoriAnnual = YUTORI_BUCKETS.reduce((s, name) => s + (Number(plan?.[`支出_${name}`]?.[3]) || 0), 0)
+      setYutoriNote(plan ? `年間タブ ${new Date().getFullYear()}年の年額` : '年間タブに今年の計画がありません')
 
       // 年金: 最新レコード
       const pRecs = (pensionRes?.records || [])
@@ -438,8 +486,10 @@ export default function SimTab() {
         ...v,
         cashAssets: depositAssets,
         investAssets: totalFunds + totalDC,
-        monthlyInvestment: monthlyFunds + monthlyDC,
-        monthlyExpense, monthlyRent, pensionMonthly, insuranceReturn,
+        myIncome,
+        monthlyFundInvest: monthlyFunds,
+        monthlyDCInvest: monthlyDC,
+        monthlyExpense, yutoriAnnual, pensionMonthly, insuranceReturn,
       }))
       setLoadStatus('done')
       setLoadMsg('データを取得しました（各項目は手動で上書き可能です）')
@@ -465,12 +515,20 @@ export default function SimTab() {
     inflationRate:   params.inflationRate,
     cashAssets:      vals.cashAssets,
     investAssets:    vals.investAssets,
-    monthlyInvest:   vals.monthlyInvestment,
+    incomeGrowth:    params.incomeGrowth,
+    myIncome:        vals.myIncome,
+    wife,
+    monthlyFundInvest: vals.monthlyFundInvest,
+    monthlyDCInvest: vals.monthlyDCInvest,
     monthlyExpense:  vals.monthlyExpense,
-    monthlyRent:     vals.monthlyRent,
+    yutoriAnnual:    vals.yutoriAnnual,
+    wifeAge:             params.wifeAge,
+    wifePensionMonthly:  params.wifePensionMonthly,
+    wifePensionStartAge: params.wifePensionStartAge,
+    monthlyRent:     params.monthlyRent,
     pensionMonthly:  vals.pensionMonthly,
     insuranceReturn: vals.insuranceReturn,
-  }), [params, vals])
+  }), [params, vals, wife])
 
   const { simBase, simEvents, hasEvents } = useMemo(() => {
     const h    = child1.enabled || child2.enabled || car.enabled || home.enabled
@@ -492,7 +550,12 @@ export default function SimTab() {
   const retireAssets     = simBase.find(d => d.age === retireAge)?.assets ?? 0
   const zeroAgeBase      = findZeroAge(simBase)
   const zeroAgeEvents    = simEvents ? findZeroAge(simEvents) : null
-  const monthlyShortfall = Math.max(0, monthlyExpense - pensionMonthly)
+  // 月の生活費＝安心＋彩り＋家賃＋ときめき＋冒険の月割り
+  const monthlyLiving    = monthlyExpense + params.monthlyRent + vals.yutoriAnnual / 12
+  const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
+    - monthlyLiving * 12 - vals.monthlyFundInvest * 12
+  const totalPension     = pensionMonthly + params.wifePensionMonthly
+  const monthlyShortfall = Math.max(0, monthlyLiving - totalPension)
 
   // ─── レンダリング ────────────────────────────────
   return (
@@ -528,6 +591,11 @@ export default function SimTab() {
             { label: '投資の想定利回り', key: 'returnRate',    unit: '% / 年', note: '投信＋DC' },
             { label: '預金金利',         key: 'cashRate',      unit: '% / 年' },
             { label: '物価上昇率',       key: 'inflationRate', unit: '% / 年', note: '日銀の物価目標2%' },
+            { label: '収入の伸び率',     key: 'incomeGrowth',  unit: '% / 年', note: '昇給。本人と妻の手取りに適用' },
+            { label: '妻の現在年齢',     key: 'wifeAge',       unit: '歳' },
+            { label: '妻の年金',         key: 'wifePensionMonthly',  unit: '円 / 月', note: 'ねんきん定期便の見込み額' },
+            { label: '妻の年金開始年齢', key: 'wifePensionStartAge', unit: '歳（妻の年齢）' },
+            { label: '家賃',             key: 'monthlyRent',   unit: '円 / 月', note: '老後も払う前提。マイホーム購入後は不要' },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
               <span className="sim-field-label">
@@ -555,6 +623,38 @@ export default function SimTab() {
         </div>
       </div>
 
+      {/* 妻の収入 */}
+      <div className="sim-section">
+        <h3 className="sim-section-title">
+          妻の手取り年収
+          <span className="sim-section-note">末っ子の成長に合わせて上乗せ（子どもがいない・生まれる前は全額）</span>
+        </h3>
+        <div className="sim-events">
+          <div className="sim-event-body">
+            <EventNumField label="基本" unit="円 / 年" wide
+              value={wife.base} onChange={v => setWife(w => ({ ...w, base: v }))} />
+            {wife.stages.map((st, i) => (
+              <div key={i} className="sim-ef">
+                <span className="sim-ef-label">段階{i + 1}</span>
+                <div className="sim-ef-row">
+                  <span className="sim-ef-unit">末っ子が</span>
+                  <input type="number" className="sim-mini-input" value={st.fromAge}
+                    onChange={e => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, fromAge: Number(e.target.value) || 0 } : x) }))} />
+                  <span className="sim-ef-unit">歳から ＋</span>
+                  <input type="number" className="sim-mini-input sim-mini-input--wide" value={st.add}
+                    onChange={e => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, add: Number(e.target.value) || 0 } : x) }))} />
+                  <span className="sim-ef-unit">円 / 年</span>
+                </div>
+              </div>
+            ))}
+            <p className="sim-ef-note">
+              今年の妻の手取り {fmt(wifeIncomeAt(wife, [child1, child2], 0))}
+              （ベース線は子どもなし＝全額、イベントあり線はライフイベントの子どもの年齢で計算。あなたの退職と同時に終わる前提）
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 取得データ */}
       <div className="sim-section">
         <h3 className="sim-section-title">
@@ -565,10 +665,12 @@ export default function SimTab() {
           {[
             { label: '預金',            key: 'cashAssets',        unit: '円',       note: '預金金利で増える' },
             { label: '投資資産',        key: 'investAssets',      unit: '円',       note: '投信＋DC評価額' },
-            { label: '月額積立額',      key: 'monthlyInvestment', unit: '円 / 月',  note: '投信 + DC' },
-            { label: '月平均支出',      key: 'monthlyExpense',    unit: '円 / 月',  note: expenseNote },
-            { label: 'うち家賃',        key: 'monthlyRent',       unit: '円 / 月',  note: 'マイホーム購入後は不要に' },
-            { label: '年金受給見込み',  key: 'pensionMonthly',    unit: '円 / 月',  note: '年金タブより' },
+            { label: 'あなたの手取り年収', key: 'myIncome',        unit: '円 / 年',  note: incomeNote },
+            { label: '投信積立',        key: 'monthlyFundInvest', unit: '円 / 月',  note: '手取りから' },
+            { label: 'DC掛金',          key: 'monthlyDCInvest',   unit: '円 / 月',  note: '会社＋自己（給与天引き）' },
+            { label: '生活費（安心＋彩り）', key: 'monthlyExpense', unit: '円 / 月',  note: expenseNote },
+            { label: 'ときめき＋冒険',  key: 'yutoriAnnual',      unit: '円 / 年',  note: yutoriNote },
+            { label: 'あなたの年金',    key: 'pensionMonthly',    unit: '円 / 月',  note: '年金タブより' },
             { label: '保険返戻予定額',  key: 'insuranceReturn',   unit: '円（一括）', note: '外貨保険/退職年度USD換算' },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
@@ -661,7 +763,7 @@ export default function SimTab() {
                 <label className="sim-ef sim-ef--check">
                   <input type="checkbox" checked={home.stopRent}
                     onChange={e => setHome(p => ({ ...p, stopRent: e.target.checked }))} />
-                  <span className="sim-ef-label">購入後は家賃（{fmt(vals.monthlyRent)}/月）がなくなる</span>
+                  <span className="sim-ef-label">購入後は家賃（{fmt(params.monthlyRent)}/月）がなくなる</span>
                 </label>
                 <p className="sim-ef-note">
                   物件価格 {fmt(homePrice(home))} ／ 諸経費 {fmt(homePrice(home) * home.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(home) - home.downPayment, home.loanRate, home.loanYears) / 12)}
@@ -711,19 +813,24 @@ export default function SimTab() {
         <h3 className="sim-section-title">老後資金チェック</h3>
         <div className="sim-check-grid">
           <SumCard
+            label="今年の年間収支（退職前）"
+            value={fmtSign(annualSurplusNow)}
+            sub="手取り（本人＋妻）− 生活費 − 投信積立"
+            pos={annualSurplusNow > 0} neg={annualSurplusNow <= 0} />
+          <SumCard
             label="退職時の総資産予測"
             value={fmtSign(retireAssets)}
             sub={`${retireAge}歳時点`}
             pos={retireAssets > 0} neg={retireAssets <= 0} />
           <SumCard
             label="月の生活費"
-            value={fmt(monthlyExpense)}
-            sub="現在の月平均支出" />
+            value={fmt(monthlyLiving)}
+            sub="安心＋彩り＋家賃＋ときめき冒険の月割り" />
           <SumCard
             label="年金受給額（月額）"
-            value={pensionMonthly > 0 ? fmt(pensionMonthly) : '未入力'}
-            sub={`${pensionStartAge}歳〜`}
-            pos={pensionMonthly > 0} />
+            value={totalPension > 0 ? fmt(totalPension) : '未入力'}
+            sub={`あなた ${pensionStartAge}歳〜 ＋ 妻 ${params.wifePensionStartAge}歳〜（妻の年齢）`}
+            pos={totalPension > 0} />
           <SumCard
             label="月の不足額"
             value={monthlyShortfall > 0 ? fmt(monthlyShortfall) : '不足なし ✓'}
@@ -740,7 +847,7 @@ export default function SimTab() {
             <SumCard
               label={`追加必要月積立額`}
               value={fmt(requiredExtra)}
-              sub={`${lifeExpectancy}歳まで持たせるために必要`}
+              sub={`退職まで毎月あと${fmt(requiredExtra)}貯めれば${lifeExpectancy}歳までもつ`}
               neg />
           ) : (
             <SumCard

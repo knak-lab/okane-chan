@@ -57,7 +57,7 @@ function doPost(e) {
     if (!isAuthorized(body.id_token)) return err('Unauthorized: ' + authFailReason_())
     switch (body.action) {
       case 'saveTransactions':   return ok(saveTransactions(body.transactions))
-      case 'updateTransactionCategory': return ok(updateTransactionCategory(body.txId, body.category))
+      case 'updateTransactionCategory': return ok(updateTransactionCategory(body.txId, body.category, body.match))
       case 'clearMonth':         return ok(clearMonth(body.month))
       case 'saveAssets':         return ok(saveAssets(body.assets))
       case 'saveAnnualPlan':     return ok(saveAnnualPlan(body.year, body.plan))
@@ -232,20 +232,25 @@ function saveTransactions(transactions) {
   return { saved: transactions.length, inserted: toInsert.length, updated, months }
 }
 
-// 取引1件のカテゴリ列だけを書き換える（明細からのカテゴリ変更用。取込日時は更新しない）
-function updateTransactionCategory(txId, category) {
+// 取引1件のカテゴリ列だけを書き換える（明細からのカテゴリ変更用。取込日時は更新しない）。
+// PayPayは支払いと付与ポイントが同じ取引番号になるため、取引日・出金・入金金額も一致する行だけを対象にする
+function updateTransactionCategory(txId, category, match) {
   if (!txId) throw new Error('txId is required')
-  const sheet   = getSheet()
-  const data    = sheet.getDataRange().getValues()
-  const txIdIdx = HDR.indexOf('取引番号')
-  const catIdx  = HDR.indexOf('カテゴリ')
+  const sheet  = getSheet()
+  const data   = sheet.getDataRange().getValues()
+  const catIdx = HDR.indexOf('カテゴリ')
+  const cols   = ['取引番号', '取引日', '出金金額（円）', '入金金額（円）']
+  const want   = { ...(match || {}), '取引番号': txId }
+  let updated  = 0
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][txIdIdx]) === String(txId)) {
+    const hit = cols.every(c => !(c in want) || cellToStr(data[i][HDR.indexOf(c)]) === String(want[c]))
+    if (hit) {
       sheet.getRange(i + 1, catIdx + 1).setValue(category || '')
-      return { updated: 1 }
+      updated++
     }
   }
-  throw new Error('取引が見つかりません: ' + txId)
+  if (updated === 0) throw new Error('取引が見つかりません: ' + txId)
+  return { updated }
 }
 
 // ─────────────────────────────────────────
