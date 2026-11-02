@@ -253,15 +253,33 @@ function ChildEvent({ label, state, onChange }) {
   )
 }
 
-function EventNumField({ label, unit, value, onChange, wide, step }) {
+// 3桁区切りで表示する数値入力。入力途中の「1.」「-」などはそのまま保持する
+const toNum = (s) => Number(String(s).replace(/[,，¥\s]/g, ''))
+const fmtInput = (v) => (Number(v) || 0).toLocaleString('ja-JP', { maximumFractionDigits: 2 })
+function NumInput({ value, onChange, className }) {
+  const [draft, setDraft] = useState(null)
+  return (
+    <input type="text" inputMode="decimal" className={className}
+      value={draft ?? fmtInput(value)}
+      onChange={e => {
+        const raw = e.target.value
+        const n = toNum(raw)
+        if (raw.trim() === '' || raw === '-') { setDraft(raw); onChange(0); return }
+        if (Number.isNaN(n)) return
+        setDraft(/^-?[\d,]+$/.test(raw.trim()) ? fmtInput(n) : raw)
+        onChange(n)
+      }}
+      onBlur={() => setDraft(null)} />
+  )
+}
+
+function EventNumField({ label, unit, value, onChange, wide }) {
   return (
     <label className="sim-ef">
       <span className="sim-ef-label">{label}</span>
       <div className="sim-ef-row">
-        <input type="number" step={step}
-          className={`sim-mini-input${wide ? ' sim-mini-input--wide' : ''}`}
-          value={value}
-          onChange={e => onChange(Number(e.target.value) || 0)} />
+        <NumInput className={`sim-mini-input${wide ? ' sim-mini-input--wide' : ''}`}
+          value={value} onChange={onChange} />
         <span className="sim-ef-unit">{unit}</span>
       </div>
     </label>
@@ -507,8 +525,6 @@ export default function SimTab() {
     }
   }
 
-  const updP = (k) => (e) => setParams(p => ({ ...p, [k]: Number(e.target.value) || 0 }))
-  const updV = (k) => (e) => setVals(p => ({ ...p, [k]: parseAmt(e.target.value) }))
 
   const { retireAge, lifeExpectancy, pensionStartAge } = params
   const { cashAssets, investAssets, monthlyExpense, pensionMonthly } = vals
@@ -607,7 +623,7 @@ export default function SimTab() {
                 {note && <span className="sim-field-note">{note}</span>}
               </span>
               <div className="sim-field-row">
-                <input type="number" step="0.1" className="sim-num-input" value={params[key]} onChange={updP(key)} />
+                <NumInput className="sim-num-input" value={params[key]} onChange={v => setParams(p => ({ ...p, [key]: v }))} />
                 <span className="sim-field-unit">{unit}</span>
               </div>
             </label>
@@ -642,11 +658,11 @@ export default function SimTab() {
                 <span className="sim-ef-label">段階{i + 1}</span>
                 <div className="sim-ef-row">
                   <span className="sim-ef-unit">末っ子が</span>
-                  <input type="number" className="sim-mini-input" value={st.fromAge}
-                    onChange={e => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, fromAge: Number(e.target.value) || 0 } : x) }))} />
+                  <NumInput className="sim-mini-input" value={st.fromAge}
+                    onChange={v => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, fromAge: v } : x) }))} />
                   <span className="sim-ef-unit">歳から ＋</span>
-                  <input type="number" className="sim-mini-input sim-mini-input--wide" value={st.add}
-                    onChange={e => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, add: Number(e.target.value) || 0 } : x) }))} />
+                  <NumInput className="sim-mini-input sim-mini-input--wide" value={st.add}
+                    onChange={v => setWife(w => ({ ...w, stages: w.stages.map((x, j) => j === i ? { ...x, add: v } : x) }))} />
                   <span className="sim-ef-unit">円 / 年</span>
                 </div>
               </div>
@@ -683,9 +699,8 @@ export default function SimTab() {
                 <span className="sim-field-note">{note}</span>
               </span>
               <div className="sim-field-row">
-                <input type="text" className="sim-num-input sim-num-input--wide"
-                  value={vals[key] ? vals[key].toLocaleString() : '0'}
-                  onChange={updV(key)} />
+                <NumInput className="sim-num-input sim-num-input--wide"
+                  value={vals[key]} onChange={v => setVals(p => ({ ...p, [key]: v }))} />
                 <span className="sim-field-unit">{unit}</span>
               </div>
             </label>
@@ -711,24 +726,24 @@ export default function SimTab() {
                 <label className="sim-ef">
                   <span className="sim-ef-label">購入まで</span>
                   <div className="sim-ef-row">
-                    <input type="number" className="sim-mini-input" value={car.yearsFromNow}
-                      onChange={e => setCar(p => ({ ...p, yearsFromNow: Number(e.target.value) || 0 }))} />
+                    <NumInput className="sim-mini-input" value={car.yearsFromNow}
+                      onChange={v => setCar(p => ({ ...p, yearsFromNow: v }))} />
                     <span className="sim-ef-unit">年後</span>
                   </div>
                 </label>
                 <label className="sim-ef">
                   <span className="sim-ef-label">購入価格</span>
                   <div className="sim-ef-row">
-                    <input type="number" className="sim-mini-input sim-mini-input--wide" value={car.price}
-                      onChange={e => setCar(p => ({ ...p, price: Number(e.target.value) || 0 }))} />
+                    <NumInput className="sim-mini-input sim-mini-input--wide" value={car.price}
+                      onChange={v => setCar(p => ({ ...p, price: v }))} />
                     <span className="sim-ef-unit">円</span>
                   </div>
                 </label>
                 <label className="sim-ef">
                   <span className="sim-ef-label">月額維持費</span>
                   <div className="sim-ef-row">
-                    <input type="number" className="sim-mini-input" value={car.monthlyFee}
-                      onChange={e => setCar(p => ({ ...p, monthlyFee: Number(e.target.value) || 0 }))} />
+                    <NumInput className="sim-mini-input" value={car.monthlyFee}
+                      onChange={v => setCar(p => ({ ...p, monthlyFee: v }))} />
                     <span className="sim-ef-unit">円 / 月</span>
                   </div>
                 </label>
@@ -756,11 +771,11 @@ export default function SimTab() {
                   value={home.buildingPrice} onChange={v => setHome(p => ({ ...p, buildingPrice: v }))} />
                 <EventNumField label="頭金" unit="円" wide
                   value={home.downPayment} onChange={v => setHome(p => ({ ...p, downPayment: v }))} />
-                <EventNumField label="諸経費" unit="% （物件価格に対して）" step="0.5"
+                <EventNumField label="諸経費" unit="% （物件価格に対して）"
                   value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />
                 <EventNumField label="ローン期間" unit="年"
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
-                <EventNumField label="ローン金利" unit="% / 年" step="0.05"
+                <EventNumField label="ローン金利" unit="% / 年"
                   value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
                 <EventNumField label="固定資産税・保険など" unit="円 / 月"
                   value={home.monthlyCost} onChange={v => setHome(p => ({ ...p, monthlyCost: v }))} />
