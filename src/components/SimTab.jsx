@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
@@ -16,6 +16,13 @@ const EDU_COST = {
 }
 const EDU_KEYS = Object.keys(EDU_COST)
 const BIRTH_YEAR = 1984  // 2026年 = 42歳
+const SETTINGS_TYPE = 'LP設定'  // PJデータシートの種別名
+const SETTINGS_STATUS_LABEL = {
+  loading: '設定を読込中…',
+  saving:  '保存中…',
+  saved:   '保存済み（パラメータ・ライフイベント）',
+  error:   '設定の読込/保存に失敗しました',
+}
 
 // ─── ユーティリティ ─────────────────────────────
 const parseAmt = (v) => Number(String(v ?? '').replace(/[,¥\s]/g, '')) || 0
@@ -291,6 +298,49 @@ export default function SimTab() {
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
 
+  // ─── パラメータ・ライフイベントの保存（スプシのPJデータシートに「LP設定」として1行） ───
+  // 現在年齢は生年から自動計算、取得データは毎回最新を取るので保存しない
+  const [settingsStatus, setSettingsStatus] = useState('idle') // idle | loading | saving | saved | error
+  // 読み込みに成功するまで自動保存しない（失敗時に初期値で上書きしないため）
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const lastSavedJson = useRef(null)
+
+  const { currentAge: _age, ...savedParams } = params
+  const settingsJson = JSON.stringify({ params: savedParams, child1, child2, car, home })
+
+  useEffect(() => {
+    if (!isGasReady()) return
+    setSettingsStatus('loading')
+    gasApi.getPJData(SETTINGS_TYPE)
+      .then(r => {
+        const s = r.data
+        if (s) {
+          if (s.params) setParams(p => ({ ...p, ...s.params }))
+          if (s.child1) setChild1(c => ({ ...c, ...s.child1 }))
+          if (s.child2) setChild2(c => ({ ...c, ...s.child2 }))
+          if (s.car)    setCar(c => ({ ...c, ...s.car }))
+          if (s.home)   setHome(h => ({ ...h, ...s.home }))
+        }
+        setSettingsStatus('idle')
+        setSettingsLoaded(true)
+      })
+      .catch(() => setSettingsStatus('error'))
+  }, [])
+
+  // 変更が止まって1.5秒後に自動保存。読み込み直後の内容を基準にし、同じなら送らない
+  useEffect(() => {
+    if (!settingsLoaded) return
+    if (lastSavedJson.current === null) { lastSavedJson.current = settingsJson; return }
+    if (settingsJson === lastSavedJson.current) return
+    const timer = setTimeout(() => {
+      setSettingsStatus('saving')
+      gasApi.savePJData(SETTINGS_TYPE, JSON.parse(settingsJson))
+        .then(() => { lastSavedJson.current = settingsJson; setSettingsStatus('saved') })
+        .catch(() => setSettingsStatus('error'))
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [settingsJson, settingsLoaded])
+
   const loadData = async () => {
     setLoadStatus('loading'); setLoadMsg('')
     try {
@@ -464,7 +514,12 @@ export default function SimTab() {
 
       {/* パラメータ設定 */}
       <div className="sim-section">
-        <h3 className="sim-section-title">パラメータ設定</h3>
+        <h3 className="sim-section-title">
+          パラメータ設定
+          {settingsStatus !== 'idle' && (
+            <span className="sim-section-note">{SETTINGS_STATUS_LABEL[settingsStatus]}</span>
+          )}
+        </h3>
         <div className="sim-fields">
           {[
             { label: '現在年齢',     key: 'currentAge',     unit: '歳' },
