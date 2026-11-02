@@ -280,7 +280,11 @@ export default function BucketYearChart() {
       <ResponsiveContainer width="100%" height={240}>
         <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
           <CartesianGrid stroke="#e1e0d9" vertical={false} />
-          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false} />
+          {/* スマホ幅でも12か月すべて出すため、間引きを止めて目盛りは数字だけにする（ツールチップは「○月」のまま） */}
+          <XAxis
+            dataKey="month" interval={0} tickFormatter={v => v.replace('月', '')}
+            tick={{ fontSize: 10, fill: '#898781' }} axisLine={{ stroke: '#c3c2b7' }} tickLine={false}
+          />
           <YAxis
             yAxisId="left"
             tick={{ fontSize: 10, fill: '#898781' }}
