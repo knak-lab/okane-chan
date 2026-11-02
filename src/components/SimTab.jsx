@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { BUCKET_CONFIG } from '../config/budget'
@@ -194,9 +194,9 @@ function findZeroAge(data) {
   return null
 }
 
-function calcRequiredExtra(simParams) {
+function calcRequiredExtra(simParams, events) {
   const sim = (extra) => {
-    const d = runSim({ ...simParams, extraSaving: extra }, null)
+    const d = runSim({ ...simParams, extraSaving: extra }, events)
     return d.length ? d[d.length - 1].assets : 0
   }
   if (sim(0) >= 0) return 0
@@ -277,7 +277,7 @@ const CustomTooltip = ({ active, payload, label }) => {
       <p className="sim-tt-age">{label}歳</p>
       {payload.map(p => (
         <p key={p.dataKey} className="sim-tt-row" style={{ color: p.color }}>
-          <span>{p.name === 'base' ? 'ベース' : 'イベントあり'}</span>
+          <span>資産</span>
           <span>¥{Math.max(0, Math.round(p.value)).toLocaleString()}</span>
         </p>
       ))}
@@ -530,26 +530,18 @@ export default function SimTab() {
     insuranceReturn: vals.insuranceReturn,
   }), [params, vals, wife])
 
-  const { simBase, simEvents, hasEvents } = useMemo(() => {
-    const h    = child1.enabled || child2.enabled || car.enabled || home.enabled
-    const base = runSim(simParams, null)
-    const ev   = h ? runSim(simParams, { child1, child2, car, home }) : null
-    return { simBase: base, simEvents: ev, hasEvents: h }
-  }, [simParams, child1, child2, car, home])
+  // ライフイベント（オンにしたものだけ）込みの1本で計算する
+  const events = useMemo(() => ({ child1, child2, car, home }), [child1, child2, car, home])
+  const sim = useMemo(() => runSim(simParams, events), [simParams, events])
 
-  const requiredExtra = useMemo(() => calcRequiredExtra(simParams), [simParams])
+  const requiredExtra = useMemo(() => calcRequiredExtra(simParams, events), [simParams, events])
 
   const chartData = useMemo(() =>
-    simBase.map((d, i) => ({
-      age:    d.age,
-      base:   Math.max(0, d.assets),
-      events: simEvents ? Math.max(0, simEvents[i].assets) : undefined,
-    })),
-    [simBase, simEvents])
+    sim.map(d => ({ age: d.age, assets: Math.max(0, d.assets) })),
+    [sim])
 
-  const retireAssets     = simBase.find(d => d.age === retireAge)?.assets ?? 0
-  const zeroAgeBase      = findZeroAge(simBase)
-  const zeroAgeEvents    = simEvents ? findZeroAge(simEvents) : null
+  const retireAssets     = sim.find(d => d.age === retireAge)?.assets ?? 0
+  const zeroAge          = findZeroAge(sim)
   // 月の生活費＝安心＋彩り＋家賃＋ときめき＋冒険の月割り
   const monthlyLiving    = monthlyExpense + params.monthlyRent + vals.yutoriAnnual / 12
   const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
@@ -649,7 +641,7 @@ export default function SimTab() {
             ))}
             <p className="sim-ef-note">
               今年の妻の手取り {fmt(wifeIncomeAt(wife, [child1, child2], 0))}
-              （ベース線は子どもなし＝全額、イベントあり線はライフイベントの子どもの年齢で計算。あなたの退職と同時に終わる前提）
+              （ライフイベントの子どもの年齢で計算。子どもをオフにすると全額。あなたの退職と同時に終わる前提）
             </p>
           </div>
         </div>
@@ -786,23 +778,17 @@ export default function SimTab() {
                 interval="preserveStartEnd" />
               <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={52} />
               <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ fontSize: 12 }}
-                formatter={n => n === 'base' ? 'ベース（イベントなし）' : 'ライフイベントあり'} />
               <ReferenceLine x={retireAge} stroke="#003087" strokeDasharray="5 3"
                 label={{ value: `退職 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
               {pensionStartAge !== retireAge && (
                 <ReferenceLine x={pensionStartAge} stroke="#F47920" strokeDasharray="4 4"
                   label={{ value: `年金開始 ${pensionStartAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#F47920' }} />
               )}
-              {zeroAgeBase && (
-                <ReferenceLine x={zeroAgeBase} stroke="#e74c3c" strokeDasharray="5 3"
-                  label={{ value: `枯渇 ${zeroAgeBase}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
+              {zeroAge && (
+                <ReferenceLine x={zeroAge} stroke="#e74c3c" strokeDasharray="5 3"
+                  label={{ value: `枯渇 ${zeroAge}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
               )}
-              <Line type="monotone" dataKey="base"   stroke="#F47920" strokeWidth={2.5} dot={false} name="base" />
-              {hasEvents && (
-                <Line type="monotone" dataKey="events" stroke="#003087" strokeWidth={2}
-                  dot={false} strokeDasharray="6 3" name="events" />
-              )}
+              <Line type="monotone" dataKey="assets" stroke="#F47920" strokeWidth={2.5} dot={false} name="資産" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -838,11 +824,9 @@ export default function SimTab() {
             pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
           <SumCard
             label="資産が尽きる年齢"
-            value={zeroAgeBase ? `${zeroAgeBase}歳` : `${lifeExpectancy}歳以降 ✓`}
-            sub={hasEvents && zeroAgeEvents
-              ? `イベントあり: ${zeroAgeEvents}歳`
-              : 'ベースシナリオ'}
-            pos={!zeroAgeBase} neg={!!zeroAgeBase} />
+            value={zeroAge ? `${zeroAge}歳` : `${lifeExpectancy}歳以降 ✓`}
+            sub="ライフイベント込み"
+            pos={!zeroAge} neg={!!zeroAge} />
           {requiredExtra > 0 ? (
             <SumCard
               label={`追加必要月積立額`}
@@ -865,7 +849,7 @@ export default function SimTab() {
         simVals={{ ...vals, totalAssets: cashAssets + investAssets }}
         simResults={{
           retireAssets,
-          zeroAge:          zeroAgeBase,
+          zeroAge,
           monthlyShortfall,
           requiredExtra,
         }}
