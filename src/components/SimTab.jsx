@@ -170,6 +170,9 @@ function runSim(p, events) {
           // 購入後は家賃が不要になる分、手元に残る
           if (home.stopRent) eventCost -= monthlyRent * 12 * infl
         }
+        // 外壁・屋根・水回りなどの大規模修繕を購入から一定年数ごとに計上
+        const repairEvery = Number(home.repairEvery)
+        if (repairEvery > 0 && t > bought && (t - bought) % repairEvery === 0) eventCost += Number(home.repairCost) * infl
       }
     }
 
@@ -330,7 +333,7 @@ export default function SimTab() {
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
-    loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true,
+    loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
   })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
@@ -750,8 +753,12 @@ export default function SimTab() {
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
                 <EventNumField label="ローン金利" unit="% / 年" step="0.05"
                   value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
-                <EventNumField label="管理費・修繕・税" unit="円 / 月"
+                <EventNumField label="固定資産税・保険など" unit="円 / 月"
                   value={home.monthlyCost} onChange={v => setHome(p => ({ ...p, monthlyCost: v }))} />
+                <EventNumField label="大規模修繕の間隔" unit="年ごと（0でなし）"
+                  value={home.repairEvery} onChange={v => setHome(p => ({ ...p, repairEvery: v }))} />
+                <EventNumField label="修繕費用（1回）" unit="円" wide
+                  value={home.repairCost} onChange={v => setHome(p => ({ ...p, repairCost: v }))} />
                 <label className="sim-ef sim-ef--check">
                   <input type="checkbox" checked={home.stopRent}
                     onChange={e => setHome(p => ({ ...p, stopRent: e.target.checked }))} />
@@ -759,7 +766,7 @@ export default function SimTab() {
                 </label>
                 <p className="sim-ef-note">
                   物件価格 {fmt(homePrice(home))} ／ 諸経費 {fmt(homePrice(home) * home.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(home) - home.downPayment, home.loanRate, home.loanYears) / 12)}
-                  （価格は購入時の金額。ローン返済額は物価上昇させない）
+                  （価格は購入時の金額。ローン返済額は物価上昇させない。修繕費は物価上昇込み）
                 </p>
               </div>
             )}
