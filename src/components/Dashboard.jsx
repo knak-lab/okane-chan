@@ -6,6 +6,7 @@ import {
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { ALL_CATEGORIES } from '../utils/categorize'
+import { withFixedRent } from '../utils/fixedRent'
 import './Dashboard.css'
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
@@ -143,12 +144,12 @@ export default function Dashboard({ transactions, onLoad }) {
 
   // 「対象外」は集計から除く（会社経費立て替え等）
   const billable = useMemo(
-    () => transactions.filter((t) => t.category !== '対象外'),
+    () => withFixedRent(transactions.filter((t) => t.category !== '対象外')),
     [transactions]
   )
 
   const annualBillable = useMemo(
-    () => annualTransactions.filter(t => t.category !== '対象外'),
+    () => withFixedRent(annualTransactions.filter(t => t.category !== '対象外')),
     [annualTransactions]
   )
 

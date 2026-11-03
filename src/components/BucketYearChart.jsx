@@ -5,6 +5,7 @@ import {
 import { BUCKET_CONFIG, ANNUAL_BUCKET_NAMES } from '../config/budget'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { readCache, writeCache } from '../utils/localCache'
+import { withFixedRent } from '../utils/fixedRent'
 
 const TOTAL = '合計'
 const MID = '安心＋彩り'
@@ -120,7 +121,7 @@ export default function BucketYearChart() {
   }, [currentYear, prevYear])
 
   const billable = useMemo(
-    () => transactions.filter(t => t.category !== '対象外'),
+    () => withFixedRent(transactions.filter(t => t.category !== '対象外')),
     [transactions]
   )
 

@@ -49,6 +49,9 @@ export const BUCKET_CONFIG = [
   },
 ]
 
+// 家賃（毎月定額。集計では実データの代わりにこの額を使う）
+export const FIXED_RENT = 95_000
+
 export const TOTAL_BUDGET = BUCKET_CONFIG.reduce((sum, b) => sum + b.budget, 0)
 
 export const ANNUAL_BUCKET_NAMES = ['ときめきチョイス費', '冒険予算', '妊活']

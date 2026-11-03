@@ -4,6 +4,7 @@ import { gasApi, isGasReady } from '../utils/gasApi'
 import { readCache, writeCache } from '../utils/localCache'
 import { ALL_CATEGORIES } from '../utils/categorize'
 import { saveCustomRule } from '../utils/customRules'
+import { withFixedRent } from '../utils/fixedRent'
 import OsaifuInput from './OsaifuInput'
 import BucketYearChart from './BucketYearChart'
 import './AccView.css'
@@ -174,12 +175,12 @@ export default function AccView() {
   }
 
   const billable = useMemo(
-    () => transactions.filter(t => t.category !== '対象外'),
+    () => withFixedRent(transactions.filter(t => t.category !== '対象外')),
     [transactions]
   )
 
   const annualBillable = useMemo(
-    () => annualTransactions.filter(t => t.category !== '対象外'),
+    () => withFixedRent(annualTransactions.filter(t => t.category !== '対象外')),
     [annualTransactions]
   )
 
