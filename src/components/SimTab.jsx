@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
+import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
 import AIDiag from './AIDiag'
 import './SimTab.css'
@@ -557,7 +558,19 @@ export default function SimTab() {
   }), [params, vals, wife])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
-  const events = useMemo(() => ({ child1, child2, car, home }), [child1, child2, car, home])
+  // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
+  const [homestPlan, setHomestPlan] = useState(null)
+  useEffect(() => {
+    const onMsg = (e) => { if (fromHomest(e, 'homest:plan')) setHomestPlan(e.data.plan) }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
+  }, [])
+  const homestLinked = Boolean(homestPlan?.total > 0)
+  const homeEff = useMemo(() => (homestLinked
+    ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000 }
+    : home), [home, homestPlan, homestLinked])
+
+  const events = useMemo(() => ({ child1, child2, car, home: homeEff }), [child1, child2, car, homeEff])
   const sim = useMemo(() => runSim(simParams, events), [simParams, events])
 
   const requiredExtra = useMemo(() => calcRequiredExtra(simParams, events), [simParams, events])
@@ -765,12 +778,22 @@ export default function SimTab() {
               <div className="sim-event-body">
                 <EventNumField label="購入まで" unit="年後"
                   value={home.yearsFromNow} onChange={v => setHome(p => ({ ...p, yearsFromNow: v }))} />
-                <EventNumField label="土地" unit="円" wide
-                  value={home.landPrice} onChange={v => setHome(p => ({ ...p, landPrice: v }))} />
-                <EventNumField label="建物" unit="円" wide
-                  value={home.buildingPrice} onChange={v => setHome(p => ({ ...p, buildingPrice: v }))} />
-                <EventNumField label="頭金" unit="円" wide
-                  value={home.downPayment} onChange={v => setHome(p => ({ ...p, downPayment: v }))} />
+                <iframe hidden title="homest 予算" src={HOMEST_EMBED_URL} />
+                {homestLinked ? (
+                  <p className="sim-ef-note">
+                    🏡 土地 {fmt(homeEff.landPrice)} ／ 建物 {fmt(homeEff.buildingPrice)} ／ 頭金 {fmt(homeEff.downPayment)}
+                    （「家」タブ＝homestの予算から。変更は「家」タブで）
+                  </p>
+                ) : (
+                  <>
+                    <EventNumField label="土地" unit="円" wide
+                      value={home.landPrice} onChange={v => setHome(p => ({ ...p, landPrice: v }))} />
+                    <EventNumField label="建物" unit="円" wide
+                      value={home.buildingPrice} onChange={v => setHome(p => ({ ...p, buildingPrice: v }))} />
+                    <EventNumField label="頭金" unit="円" wide
+                      value={home.downPayment} onChange={v => setHome(p => ({ ...p, downPayment: v }))} />
+                  </>
+                )}
                 <EventNumField label="諸経費" unit="% （物件価格に対して）"
                   value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />
                 <EventNumField label="ローン期間" unit="年"
@@ -789,7 +812,7 @@ export default function SimTab() {
                   <span className="sim-ef-label">購入後は家賃（{fmt(params.monthlyRent)}/月）がなくなる</span>
                 </label>
                 <p className="sim-ef-note">
-                  物件価格 {fmt(homePrice(home))} ／ 諸経費 {fmt(homePrice(home) * home.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(home) - home.downPayment, home.loanRate, home.loanYears) / 12)}
+                  物件価格 {fmt(homePrice(homeEff))} ／ 諸経費 {fmt(homePrice(homeEff) * homeEff.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(homeEff) - homeEff.downPayment, homeEff.loanRate, homeEff.loanYears) / 12)}
                   （価格は購入時の金額。ローン返済額は物価上昇させない。修繕費は物価上昇込み）
                 </p>
               </div>
