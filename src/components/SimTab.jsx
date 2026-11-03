@@ -77,6 +77,12 @@ function calcMonthlyExpense(transactions, now = new Date()) {
 }
 
 // ─── シミュレーション計算 ─────────────────────────
+// 犬：年間費用はアニコム「ペットにかける年間支出調査」（2020〜2021年）、飼う年数はペットフード協会の平均寿命（2021年）が目安
+const DOG_SIZES = {
+  large: { label: '大型犬',       defaults: { annualCost: 520_000, years: 13 } },
+  small: { label: '中型・小型犬', defaults: { annualCost: 350_000, years: 15 } },
+}
+
 const homePrice = (home) => Number(home.landPrice) + Number(home.buildingPrice)
 
 // 元利均等返済の年間返済額
@@ -165,6 +171,12 @@ function runSim(p, events) {
         const isPurchase = t === first || (cycle > 0 && t > first && (t - first) % cycle === 0)
         if (isPurchase) eventCost += Number(c.price) * infl
         if (t >= first) eventCost += Number(c.monthlyFee) * 12 * infl
+      }
+      const dog = events.dog
+      if (dog?.enabled) {
+        const from = Number(dog.yearsFromNow)
+        if (t === from) eventCost += Number(dog.initialCost) * infl
+        if (t >= from && t < from + Number(dog.years)) eventCost += Number(dog.annualCost) * infl
       }
       if (home?.enabled) {
         const bought = Number(home.yearsFromNow)
@@ -355,6 +367,7 @@ export default function SimTab() {
   })
   const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立' })
   const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立' })
+  const [dog,    setDog]    = useState({ enabled: false, size: 'small', yearsFromNow: 1, initialCost: 300_000, ...DOG_SIZES.small.defaults })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
@@ -371,7 +384,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -384,6 +397,7 @@ export default function SimTab() {
           if (s.child1) setChild1(c => ({ ...c, ...s.child1 }))
           if (s.child2) setChild2(c => ({ ...c, ...s.child2 }))
           if (s.car)    setCar(c => ({ ...c, ...s.car }))
+          if (s.dog)    setDog(d => ({ ...d, ...s.dog }))
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
           if (s.wife)   setWife(w => ({ ...w, ...s.wife }))
         }
@@ -570,7 +584,7 @@ export default function SimTab() {
     ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000 }
     : home), [home, homestPlan, homestLinked])
 
-  const events = useMemo(() => ({ child1, child2, car, home: homeEff }), [child1, child2, car, homeEff])
+  const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff }), [child1, child2, car, dog, homeEff])
   const sim = useMemo(() => runSim(simParams, events), [simParams, events])
 
   const requiredExtra = useMemo(() => calcRequiredExtra(simParams, events), [simParams, events])
@@ -764,6 +778,41 @@ export default function SimTab() {
                   value={car.replaceEvery} onChange={v => setCar(p => ({ ...p, replaceEvery: v }))} />
                 <EventNumField label="手放す年齢" unit="歳（0で手放さない）"
                   value={car.sellAge} onChange={v => setCar(p => ({ ...p, sellAge: v }))} />
+              </div>
+            )}
+          </div>
+
+          <div className="sim-event">
+            <button
+              className={`sim-event-toggle${dog.enabled ? ' active' : ''}`}
+              onClick={() => setDog(p => ({ ...p, enabled: !p.enabled }))}>
+              🐕 犬
+            </button>
+            {dog.enabled && (
+              <div className="sim-event-body">
+                <div className="sim-ef">
+                  <span className="sim-ef-label">大きさ</span>
+                  <div className="sim-ef-row">
+                    {Object.entries(DOG_SIZES).map(([key, d]) => (
+                      <button key={key} className={`sim-choice-btn${dog.size === key ? ' active' : ''}`}
+                        onClick={() => setDog(p => ({ ...p, size: key, ...d.defaults }))}>
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <EventNumField label="飼い始め" unit="年後"
+                  value={dog.yearsFromNow} onChange={v => setDog(p => ({ ...p, yearsFromNow: v }))} />
+                <EventNumField label="お迎え費用" unit="円（生体・用品・ワクチンなど）" wide
+                  value={dog.initialCost} onChange={v => setDog(p => ({ ...p, initialCost: v }))} />
+                <EventNumField label="年間費用" unit="円 / 年" wide
+                  value={dog.annualCost} onChange={v => setDog(p => ({ ...p, annualCost: v }))} />
+                <EventNumField label="飼う年数" unit="年"
+                  value={dog.years} onChange={v => setDog(p => ({ ...p, years: v }))} />
+                <p className="sim-ef-note">
+                  生涯費用の目安 {fmt(Number(dog.initialCost) + Number(dog.annualCost) * Number(dog.years))}（今の物価で。シミュレーションでは物価上昇込み）。
+                  年間費用はアニコム「ペットにかける年間支出調査」、年数は平均寿命が目安。大きさを切り替えると年間費用と年数が目安値に戻ります
+                </p>
               </div>
             )}
           </div>
