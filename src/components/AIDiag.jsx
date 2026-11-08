@@ -2,6 +2,24 @@ import { useState } from 'react'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import './AIDiag.css'
 
+// "1,234,567" / "¥1,000" / 空欄 を数値に（シミュレーション側と同じ読み方）
+const parseAmt = (v) => Number(String(v ?? '').replace(/[,¥\s]/g, '')) || 0
+const isBlank  = (v) => v === '' || v == null
+const yen      = (n) => `¥${Math.round(Number(n) || 0).toLocaleString()}`
+
+// 投信マスタの今の積立額（新: 積立スケジュール(JSON) / 旧: 積立額(円/月)）
+function currentFundMonthly(m) {
+  const json = m['積立スケジュール(JSON)']
+  if (json) {
+    try {
+      const sched = JSON.parse(json)
+      const cur = sched.find(p => !p.endMonth) || sched[sched.length - 1]
+      return parseAmt(cur?.amount)
+    } catch { /* 旧スキーマへ */ }
+  }
+  return parseAmt(m['積立額(円/月)'])
+}
+
 // ─── マークダウン簡易レンダラー ───────────────────────
 function renderInline(text) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g)
@@ -60,6 +78,7 @@ function MarkdownView({ text }) {
 export default function AIDiag({ simParams, simVals, simResults }) {
   const [status,   setStatus]   = useState('idle') // idle | loading | done | error
   const [diagText, setDiagText] = useState('')
+  const [basis,    setBasis]    = useState(null) // AIに渡した数字（根拠表示用）
 
   const run = async () => {
     if (!isGasReady()) {
@@ -81,15 +100,16 @@ export default function AIDiag({ simParams, simVals, simResults }) {
         gasApi.getInsurances(),
       ])
 
-      // 口座別最新残高
+      // 口座別最新残高（金額が空欄の月はスキップ＝シミュレーションの「預金」と同じ計算）
       const accLatest = {}
       for (const r of assetsRes.assets || []) {
+        if (isBlank(r['金額'])) continue
         const key = `${r['区分']}__${r['種別']}__${r['口座名']}`
-        if (!accLatest[key] || r['月'] > accLatest[key]['月']) accLatest[key] = r
+        if (!accLatest[key] || (r['月'] || '') > (accLatest[key]['月'] || '')) accLatest[key] = r
       }
       const assets = Object.values(accLatest).map(r => ({
-        kubun: r['区分'], type: r['種別'], name: r['口座名'],
-        amount: Number(r['金額']) || 0,
+        kubun: r['区分'], type: r['種別'], name: r['口座名'], month: r['月'],
+        amount: parseAmt(r['金額']),
       }))
 
       // 今月のカテゴリ別支出
@@ -114,9 +134,9 @@ export default function AIDiag({ simParams, simVals, simResults }) {
       const funds = (fundsRes.masters || []).map(m => ({
         name:       m['ファンド名'],
         broker:     m['証券会社'],
-        monthlyAmt: Number(m['積立額(円/月)']) || 0,
-        eval:       Number(fundLatest[m['ファンド名']]?.['評価額']) || 0,
-        pnl:        Number(fundLatest[m['ファンド名']]?.['損益']) || 0,
+        monthlyAmt: currentFundMonthly(m),
+        eval:       parseAmt(fundLatest[m['ファンド名']]?.['評価額']),
+        pnl:        parseAmt(fundLatest[m['ファンド名']]?.['損益']),
       }))
 
       // DC（最新評価額）
@@ -127,10 +147,10 @@ export default function AIDiag({ simParams, simVals, simResults }) {
       }
       const dc = (dcRes.masters || []).map(m => ({
         institution: m['運用機関'],
-        companyAmt:  Number(m['会社掛金(円/月)']) || 0,
-        selfAmt:     Number(m['自己掛金(円/月)']) || 0,
-        eval:        Number(dcLatest[m['運用機関']]?.['評価額']) || 0,
-        pnl:         Number(dcLatest[m['運用機関']]?.['損益']) || 0,
+        companyAmt:  parseAmt(m['会社掛金(円/月)']),
+        selfAmt:     parseAmt(m['自己掛金(円/月)']),
+        eval:        parseAmt(dcLatest[m['運用機関']]?.['評価額']),
+        pnl:         parseAmt(dcLatest[m['運用機関']]?.['損益']),
       }))
 
       // 年金（最新）
@@ -139,13 +159,21 @@ export default function AIDiag({ simParams, simVals, simResults }) {
         .slice(0, 1)
         .map(r => ({
           yearMonth:  r['確認年月'],
-          monthlyAmt: Number(r['受給見込み額(月額)']) || 0,
+          monthlyAmt: parseAmt(r['受給見込み額(月額)']),
           months:     r['加入月数'] || '',
         }))
 
+      // シミュレーションタブに表示中の数字をそのまま使う（AI側で別計算しない）
+      // ※ GAS のプロンプトは monthlyInvestment を読むので、投信＋DC の合計を入れて渡す
+      const vals = {
+        ...simVals,
+        monthlyInvestment: (Number(simVals?.monthlyFundInvest) || 0) + (Number(simVals?.monthlyDCInvest) || 0),
+      }
+      setBasis({ vals, assets, funds, dc, pension: pension[0], latestMonth })
+
       // GAS に送信
       const json = await gasApi.diagnose({
-        simParams, simVals, simResults,
+        simParams, simVals: vals, simResults,
         assets, funds, dc, pension, spending, latestMonth,
         insurancePolicies: (insRes.masters || []).length,
       })
@@ -181,6 +209,25 @@ export default function AIDiag({ simParams, simVals, simResults }) {
       {status === 'done' && (
         <div className="ai-result">
           <MarkdownView text={diagText} />
+          {basis && (
+            <details className="ai-basis">
+              <summary>📋 この診断に使った数字</summary>
+              <ul className="md-ul">
+                <li>資産合計: <strong>{yen(basis.vals.totalAssets)}</strong>（預金 {yen(basis.vals.cashAssets)} ＋ 投資 {yen(basis.vals.investAssets)}）※シミュレーション欄の値</li>
+                <li>月の積立: {yen(basis.vals.monthlyInvestment)}（投信 {yen(basis.vals.monthlyFundInvest)} ＋ DC {yen(basis.vals.monthlyDCInvest)}）</li>
+                <li>月平均の生活費: {yen(basis.vals.monthlyExpense)}</li>
+                <li>年金見込み: {basis.pension ? `${yen(basis.pension.monthlyAmt)}/月（${basis.pension.yearMonth} 確認）` : 'データなし'}</li>
+                <li>支出分析の対象月: {basis.latestMonth || 'なし'}（月の途中なら途中までの集計）</li>
+              </ul>
+              <p className="md-p">口座別（金額が入っている最新の月）</p>
+              <ul className="md-ul">
+                {basis.assets.length === 0 && <li>データなし</li>}
+                {basis.assets.map((a, i) => (
+                  <li key={i}>[{a.kubun}] {a.name}: {yen(a.amount)}（{a.month}）</li>
+                ))}
+              </ul>
+            </details>
+          )}
           <button className="ai-redo-btn" onClick={run}>🔄 再診断</button>
         </div>
       )}
