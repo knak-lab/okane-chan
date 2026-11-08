@@ -630,8 +630,22 @@ export default function SimTab() {
   const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
     - monthlyLiving * 12 - vals.monthlyFundInvest * 12
   const totalPension     = pensionMonthly + params.wifePensionMonthly
-  const retireLiving     = (monthlyExpense + vals.yutoriAnnual / 12) * params.retireExpenseRate / 100 + params.monthlyRent
+  // 退職後の住居費（今の物価・月額）。シミュレーションと同じく、マイホーム購入後は家賃を止めて維持費とローン返済を入れる
+  const retireT          = retireAge - params.currentAge
+  const homeOn           = homeEff.enabled && Number(homeEff.yearsFromNow) <= retireT
+  const homeLoanEndAge   = homeOn ? params.currentAge + Number(homeEff.yearsFromNow) + Number(homeEff.loanYears) : null
+  const homeLoanMonthly  = homeOn
+    ? annualLoanPayment(homePrice(homeEff) - Number(homeEff.downPayment), homeEff.loanRate, Number(homeEff.loanYears)) / 12
+    : 0
+  const retireRent       = homeOn && homeEff.stopRent ? 0 : params.monthlyRent
+  const retireHomeCost   = homeOn ? Number(homeEff.monthlyCost) : 0
+  const retireLoan       = homeOn && homeLoanEndAge > retireAge ? homeLoanMonthly : 0
+  const retireLivingBase = (monthlyExpense + vals.yutoriAnnual / 12) * params.retireExpenseRate / 100
+  const retireHousing    = retireRent + retireHomeCost + retireLoan
+  const retireLiving     = retireLivingBase + retireHousing
   const monthlyShortfall = Math.max(0, retireLiving - totalPension)
+  // ローンが退職後に残る場合、完済後の不足額
+  const shortfallAfterLoan = retireLoan > 0 ? Math.max(0, retireLiving - retireLoan - totalPension) : null
 
   // ─── レンダリング ────────────────────────────────
   return (
@@ -953,7 +967,16 @@ export default function SimTab() {
           <SumCard
             label="月の不足額"
             value={monthlyShortfall > 0 ? fmt(monthlyShortfall) : '不足なし ✓'}
-            sub={`退職後の生活費（${params.retireExpenseRate}%）− 年金`}
+            sub={
+              `生活費 ${fmt(retireLivingBase)}（${params.retireExpenseRate}%）＋ 住居費 ${fmt(retireHousing)}` +
+              (homeOn
+                ? `（${retireRent ? `家賃 ${fmt(retireRent)}・` : ''}維持費 ${fmt(retireHomeCost)}${retireLoan ? `・ローン ${fmt(retireLoan)}` : ''}）`
+                : '（家賃）') +
+              ` − 年金 ${fmt(totalPension)}` +
+              (shortfallAfterLoan != null
+                ? `。ローン完済（${homeLoanEndAge}歳）後は ${shortfallAfterLoan > 0 ? fmt(shortfallAfterLoan) : '不足なし'}`
+                : '')
+            }
             pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
           <SumCard
             label="資産が尽きる年齢"
@@ -983,6 +1006,7 @@ export default function SimTab() {
         events: { child1, child2, car, dog, home: homeEff, homestLinked },
         results: {
           retireAssets, zeroAge, monthlyShortfall, requiredExtra,
+          retireLivingBase, retireHousing, retireRent, retireHomeCost, retireLoan, homeLoanEndAge, shortfallAfterLoan,
           annualSurplusNow, totalPension, retireLiving, monthlyLiving,
           wifeIncomeNow: wifeIncomeAt(wife, [child1, child2], 0),
           // 5歳刻み＋退職・年金開始・最終年の資産推移

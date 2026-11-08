@@ -941,7 +941,10 @@ function buildLPDiagPrompt(d) {
     '# シミュレーション結果\n' +
     '- 今の年間収支（手取り−生活費−投信積立） ' + yen(r.annualSurplusNow) + '\n' +
     '- 月の生活費（家賃・ときめき込み） ' + yen(r.monthlyLiving) + ' / 退職後 ' + yen(r.retireLiving) + '\n' +
-    '- 年金合計 ' + yen(r.totalPension) + '/月 / 退職後の月の不足 ' + yen(r.monthlyShortfall) + '\n' +
+    '- 退職後の月の生活費の内訳（今の物価）: 生活費 ' + yen(r.retireLivingBase) + ' ＋ 住居費 ' + yen(r.retireHousing) +
+      '（家賃 ' + yen(r.retireRent) + '・維持費 ' + yen(r.retireHomeCost) + '・ローン返済 ' + yen(r.retireLoan) + '）\n' +
+    '- 年金合計 ' + yen(r.totalPension) + '/月 / 退職後の月の不足 ' + yen(r.monthlyShortfall) +
+      (r.shortfallAfterLoan != null ? '（ローン完済 ' + r.homeLoanEndAge + '歳以降は ' + yen(r.shortfallAfterLoan) + '）' : '') + '\n' +
     '- 退職時資産 ' + yen(r.retireAssets) + ' / 資産が尽きる年齢 ' + (r.zeroAge ? r.zeroAge + '歳' : 'なし（寿命まで持つ）') +
     ' / 寿命まで持たせるための追加積立 ' + (r.requiredExtra > 0 ? yen(r.requiredExtra) + '/月' : '不要') + '\n' +
     '- 資産推移:\n' + milestoneLines + '\n\n' +
