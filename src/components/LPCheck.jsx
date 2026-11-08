@@ -1,7 +1,5 @@
-import { useMemo, useState } from 'react'
-import {
-  dataChecks, planChecks, WHATIF_FIELDS, whatIfField, currentValue, applyWhatIfs, summarize,
-} from '../utils/lpChecks'
+import { useState } from 'react'
+import { WHATIF_FIELDS, whatIfField, currentValue } from '../utils/lpChecks'
 import './LPCheck.css'
 
 const ICON = { ng: '❌', warn: '⚠️', info: 'ℹ️' }
@@ -72,24 +70,11 @@ function ResultLine({ base, s, endAge }) {
   )
 }
 
-export default function LPCheck({ lp, simParams, events, simulate, whatIfs, setWhatIfs }) {
-  const data = useMemo(() => dataChecks(lp), [lp])
-  const plan = useMemo(() => planChecks(lp), [lp])
-
-  const base = useMemo(
-    () => summarize(simulate(simParams, events), simParams.retireAge),
-    [simParams, events, simulate])
-
-  const results = useMemo(() => {
-    const run = (conds) => {
-      const a = applyWhatIfs(simParams, events, conds)
-      return { s: summarize(simulate(a.simParams, a.events), a.simParams.retireAge), endAge: a.simParams.endAge }
-    }
-    return {
-      rows: whatIfs.map(w => run([w])),
-      all: whatIfs.length >= 2 ? run(whatIfs) : null,
-    }
-  }, [whatIfs, simParams, events, simulate])
+// checks: { data, plan }（lpChecks の dataChecks / planChecks）
+// results: runWhatIfs の結果。計算は SimTab で行い、AI相談にも同じものを渡す
+export default function LPCheck({ checks, results, simParams, events, whatIfs, setWhatIfs }) {
+  const { data, plan } = checks
+  const base = results.base.s
 
   const update = (id, patch) => setWhatIfs(ws => ws.map(w => (w.id === id ? { ...w, ...patch } : w)))
   const remove = (id) => setWhatIfs(ws => ws.filter(w => w.id !== id))

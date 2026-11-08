@@ -70,7 +70,7 @@ function doPost(e) {
       case 'saveInvestmentFunds':  return ok(saveInvestmentFunds(body.masters, body.records))
       case 'saveDCAccounts':       return ok(saveDCAccounts(body.masters, body.records))
       case 'savePensionData':      return ok(savePensionData(body.records))
-      case 'diagnose':             return ok(callClaudeAPI(body.diagData))
+      case 'aiChat':               return ok(aiChat(body.chat))
       default:                     return err('Unknown action: ' + body.action)
     }
   } catch (ex) {
@@ -741,132 +741,89 @@ function testSaveCategoryRules() {
 }
 
 // ─────────────────────────────────────────
-//  AI診断（Claude API）
+//  AI相談（Claude API）
 //  事前設定: GASエディタ → プロジェクトの設定 → スクリプトプロパティ
 //            キー: CLAUDE_API_KEY  値: sk-ant-...
+//
+//  会話はフロント（端末）が持ち、毎回まるごと送ってくる:
+//    chat.lp       … 相談を始めたときのLPタブの中身（会話の間は変えない＝プロンプトキャッシュと思考ブロックを保つため）
+//    chat.messages … { role:'user', content:'…' }
+//                    { role:'assistant', content:[…前回APIが返したブロックそのまま…] }
+//                    { role:'system', lpUpdate:{…} }  ← 会話の途中でLPの数字が変わったときの差し込み
 // ─────────────────────────────────────────
+const AI_MODEL = 'claude-sonnet-5-5'
 
-function callClaudeAPI(diagData) {
+function aiChat(chat) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY')
   if (!apiKey) {
     throw new Error('GASのスクリプトプロパティに CLAUDE_API_KEY を設定してください（プロジェクトの設定 → スクリプトプロパティ）')
   }
+  if (!chat || !chat.lp || !Array.isArray(chat.messages) || !chat.messages.length) {
+    throw new Error('相談の内容が空です')
+  }
 
-  // 新しいフロント（LPタブ診断）は diagData.lp を送ってくる。旧フロントは従来のプロンプト
-  const prompt = diagData && diagData.lp ? buildLPDiagPrompt(diagData) : buildDiagPrompt(diagData)
+  const messages = chat.messages.map(function(m) {
+    if (m.role === 'system') {
+      return { role: 'system', content: 'LPタブの数字が更新されました。ここからは次の内容を前提に答えてください。\n\n' + buildLPContext(m.lpUpdate || {}) }
+    }
+    return { role: m.role, content: m.content }
+  })
 
   const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post',
     headers: {
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
+      // 安全側で断られたときに別モデルで答え直す / 履歴の思考ブロックが合わなくなっても止めずに続ける
+      'anthropic-beta': 'server-side-fallback-2026-07-01,thinking-binding-controls-2026-08-01',
       'content-type': 'application/json',
     },
     payload: JSON.stringify({
-      model: 'claude-sonnet-5',
-      max_tokens: 8000,
+      model: AI_MODEL,
+      max_tokens: 16000,
+      system: AI_CHAT_RULES + '\n\n' + buildLPContext(chat.lp),
+      messages: messages,
+      cache_control: { type: 'ephemeral' },  // 2回目以降の質問で、同じ前半部分を割引で読む
+      thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } },
       output_config: { effort: 'medium' },
-      messages: [{ role: 'user', content: prompt }],
+      fallbacks: 'default',
     }),
     muteHttpExceptions: true,
   })
 
   const code = response.getResponseCode()
   const body = response.getContentText()
-  const result = JSON.parse(body)
-
+  var result
+  try { result = JSON.parse(body) } catch (e) { throw new Error('Claude API の応答が読めません(' + code + ')') }
   if (code !== 200) {
     throw new Error('Claude API エラー(' + code + '): ' + (result.error && result.error.message ? result.error.message : body))
   }
-
-  // 今のモデルは先頭に thinking ブロックが入るので、text ブロックだけをつなげて返す
   if (result.stop_reason === 'refusal') {
-    throw new Error('AIが診断を断りました。もう一度お試しください')
+    throw new Error('AIが回答を断りました。聞き方を変えてもう一度お試しください')
   }
   const text = (result.content || [])
     .filter(function(b) { return b.type === 'text' })
     .map(function(b) { return b.text })
     .join('')
   if (!text) throw new Error('AIの応答が空でした（' + result.stop_reason + '）')
-  return { text: text }
+  return { content: result.content, text: text, usage: result.usage || {}, stopReason: result.stop_reason, model: result.model }
 }
 
-function buildDiagPrompt(d) {
-  const p = d.simParams  || {}
-  const v = d.simVals    || {}
-  const r = d.simResults || {}
+var AI_CHAT_RULES =
+  'あなたは日本の家計・ライフプランに詳しいファイナンシャルプランナーで、家計アプリ「お金ちゃん」の利用者（本人）の相談相手です。\n' +
+  '下にあるのは、ライフプラン（LP）タブに今入っている内容と、アプリが計算・判定した結果です。\n\n' +
+  '答え方:\n' +
+  '- 日本語で、まず結論を1〜2文。そのあと必要な分だけ箇条書き。長くても400字程度。聞かれていないことを並べない\n' +
+  '- 選択肢があるときは、どれを選ぶと何がどう変わるかを数字で比べ、判断の材料を渡す。最後に決めるのは本人\n' +
+  '- 数字はここに書かれたものだけを根拠にする。0円や未入力の項目は「ない」と決めつけず、入力漏れの可能性として扱う\n' +
+  '- アプリの計算に入っていないもの（下の「前提」）が答えに効くときは、そう言う\n' +
+  '- 条件を変えたらどうなるかは、アプリの「もしも比較」で正確に計算できる。試すとよい条件があれば「もしも〈項目名〉が〈値〉なら」の形で書く。項目名は次から選ぶ: ' +
+  '退職金（手取り）・退職後の生活費・退職年齢・年金受給開始年齢・あなたの年金・妻の年金・投資の想定利回り・物価上昇率・収入の伸び率・あなたの手取り年収・生活費（安心＋彩り）・ときめき＋冒険・家賃・投信積立・追加の積立・想定寿命・ローン期間・ローン金利・頭金・家の購入時期\n' +
+  '- 調べ方を聞かれたら、具体的な書類や窓口（ねんきん定期便、就業規則、源泉徴収票など）を挙げる\n' +
+  '- 見出しは使わない（チャットなので）。強調は **太字** だけ'
 
-  function yen(n) {
-    var num = Number(n) || 0
-    return '¥' + Math.round(num).toLocaleString()
-  }
-
-  // カテゴリ別支出（金額降順）
-  var spendLines = Object.entries(d.spending || {})
-    .sort(function(a, b) { return b[1] - a[1] })
-    .map(function(e) { return '  ' + e[0] + ': ' + yen(e[1]) })
-    .join('\n') || '  データなし'
-
-  // 口座別残高（金額降順）
-  var assetLines = (d.assets || [])
-    .sort(function(a, b) { return b.amount - a.amount })
-    .map(function(a) { return '  [' + a.kubun + '] ' + a.name + ': ' + yen(a.amount) })
-    .join('\n') || '  データなし'
-
-  // 投資信託
-  var fundLines = (d.funds || [])
-    .map(function(f) {
-      return '  ' + f.name + ': 評価額' + yen(f.eval) +
-        ', 損益' + (f.pnl >= 0 ? '+' : '') + yen(f.pnl) +
-        ', 積立' + yen(f.monthlyAmt) + '/月'
-    })
-    .join('\n') || '  データなし'
-
-  // DC
-  var dcLines = (d.dc || [])
-    .map(function(a) {
-      return '  ' + a.institution + ': 評価額' + yen(a.eval) +
-        ', 損益' + (a.pnl >= 0 ? '+' : '') + yen(a.pnl) +
-        ', 掛金' + yen(a.companyAmt + a.selfAmt) + '/月'
-    })
-    .join('\n') || '  データなし'
-
-  // 年金
-  var pensionLine = (d.pension && d.pension.length > 0)
-    ? yen(d.pension[0].monthlyAmt) + '/月（' + (p.pensionStartAge || 65) + '歳〜、加入' + d.pension[0].months + 'ヶ月）'
-    : 'データなし'
-
-  return 'あなたは日本の家計・資産管理に詳しいファイナンシャルプランナーです。以下の家計データを分析し、日本語で診断レポートを作成してください。\n\n' +
-    '## 基本情報\n' +
-    '- 現在年齢: ' + (p.currentAge || '不明') + '歳 / 退職予定: ' + (p.retireAge || 65) + '歳 / 想定寿命: ' + (p.lifeExpectancy || 90) + '歳\n' +
-    '- 想定運用利率: ' + (p.returnRate || 5) + '%/年 / 年金受給開始: ' + (p.pensionStartAge || 65) + '歳\n\n' +
-    '## 今月（' + (d.latestMonth || '直近') + '）カテゴリ別支出\n' + spendLines + '\n\n' +
-    '## 資産状況（口座別・最新月）\n' +
-    '- 合計: ' + yen(v.totalAssets) + '\n' + assetLines + '\n\n' +
-    '## 投資信託\n' + fundLines + '\n\n' +
-    '## 企業型DC\n' + dcLines + '\n\n' +
-    '## 月次収支\n' +
-    '- 月額積立: ' + yen(v.monthlyInvestment) + ' / 月平均支出: ' + yen(v.monthlyExpense) + '\n' +
-    '- 外貨保険: ' + (d.insurancePolicies || 0) + '件（返戻予定: ' + yen(v.insuranceReturn) + '）\n\n' +
-    '## 公的年金\n' + pensionLine + '\n\n' +
-    '## 老後シミュレーション結果\n' +
-    '- 退職時資産予測: ' + yen(r.retireAssets) + '\n' +
-    '- 月の不足額（生活費−年金）: ' + yen(r.monthlyShortfall) + '\n' +
-    '- 資産が尽きる年齢: ' + (r.zeroAge ? r.zeroAge + '歳' : (p.lifeExpectancy || 90) + '歳以降') + '\n' +
-    '- 必要追加月積立額: ' + (r.requiredExtra > 0 ? yen(r.requiredExtra) : '追加不要') + '\n\n' +
-    '---\n\n' +
-    '以下の4セクションで診断レポートを作成してください。各セクションは具体的な数字を引用し、200〜300字で簡潔にまとめてください。\n\n' +
-    '## 📊 今月の支出分析\n\n' +
-    '## 🏦 資産状況の健康度\n\n' +
-    '## ⚠️ 老後資金リスク\n\n' +
-    '## 💡 総合アドバイス（今すぐやるべきこと3つを番号付きで）'
-}
-
-
-// ─────────────────────────────────────────
-//  AI診断（LPタブ）: 診断・データの過不足・精度を上げる追加データ
-// ─────────────────────────────────────────
-function buildLPDiagPrompt(d) {
+// LPタブの中身を、AIが読む文章にする（相談開始時のシステムプロンプトと、途中の更新で使う）
+function buildLPContext(d) {
   var lp = d.lp || {}
   var p  = lp.params  || {}
   var v  = lp.vals    || {}
@@ -879,53 +836,41 @@ function buildLPDiagPrompt(d) {
   function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString() }
   function onOff(e) { return e && e.enabled ? 'オン' : 'オフ' }
   function lines(arr, empty) { return arr.length ? arr.join('\n') : (empty || '  データなし') }
+  function detail(arr) {
+    return lines((arr || []).map(function(a) { return '  ' + a.name + ': ' + yen(a.amount) + '（' + (a.month || '記録なし') + '時点）' }))
+  }
 
-  var assetLines = lines((d.assets || [])
-    .sort(function(a, b) { return b.amount - a.amount })
-    .map(function(a) { return '  [' + a.kubun + '] ' + a.name + ': ' + yen(a.amount) + '（' + (a.month || '月不明') + '時点）' }))
-  var fundLines = lines((d.funds || []).map(function(f) {
-    return '  ' + f.name + ': 評価額' + yen(f.eval) + '（' + (f.month || '記録なし') + '）, 損益' + yen(f.pnl) + ', 積立' + yen(f.monthlyAmt) + '/月'
-  }))
-  var dcLines = lines((d.dc || []).map(function(a) {
-    return '  ' + a.institution + ': 評価額' + yen(a.eval) + '（' + (a.month || '記録なし') + '）, 掛金' + yen(a.companyAmt + a.selfAmt) + '/月'
-  }))
-
-  var stageLines = (w.stages || []).map(function(st) {
-    return '末っ子' + st.fromAge + '歳から+' + yen(st.add) + '/年'
-  }).join('、')
-
+  var stageLines = (w.stages || []).map(function(st) { return '末っ子' + st.fromAge + '歳から+' + yen(st.add) + '/年' }).join('、')
   var children = ['child1', 'child2'].map(function(k, i) {
     var c = ev[k] || {}
     return '- 第' + (i + 1) + '子: ' + onOff(c) + (c.enabled ? '（現在' + c.currentAge + '歳、' + c.edu + '）' : '')
   }).join('\n')
-  var car = ev.car || {}
-  var dog = ev.dog || {}
-  var home = ev.home || {}
+  var car = ev.car || {}, dog = ev.dog || {}, home = ev.home || {}
   var eventLines = children + '\n' +
     '- 車: ' + onOff(car) + (car.enabled ? '（' + car.yearsFromNow + '年後に' + yen(car.price) + '、' + car.replaceEvery + '年ごと買替、維持費' + yen(car.monthlyFee) + '/月、' + car.sellAge + '歳で手放す）' : '') + '\n' +
     '- 犬: ' + onOff(dog) + (dog.enabled ? '（' + dog.yearsFromNow + '年後から' + dog.years + '年、初期' + yen(dog.initialCost) + '、年' + yen(dog.annualCost) + '）' : '') + '\n' +
     '- マイホーム: ' + onOff(home) + (home.enabled ? '（' + home.yearsFromNow + '年後、土地' + yen(home.landPrice) + '+建物' + yen(home.buildingPrice) +
-      '、頭金' + yen(home.downPayment) + '、諸経費' + home.feeRate + '%、ローン' + home.loanYears + '年' + home.loanRate + '%、維持費' + yen(home.monthlyCost) +
+      '、頭金' + yen(home.downPayment) + '、諸経費' + home.feeRate + '%、ローン' + home.loanYears + '年' + home.loanRate + '%（月' + yen(r.homeLoanMonthly) + '）、固定資産税・保険など' + yen(home.monthlyCost) +
       '/月、' + home.repairEvery + '年ごと修繕' + yen(home.repairCost) + '、購入後の家賃' + (home.stopRent ? '不要' : '継続') +
       '、' + (ev.homestLinked ? '家タブと連携' : '手入力') + '）' : '')
 
-  var milestoneLines = lines((r.milestones || []).map(function(m) { return '  ' + m.age + '歳: ' + yen(m.assets) }))
-
   var LEVEL = { ng: '【不足】', warn: '【要確認】', info: '【参考】' }
-  var checkLines = lines((d.checks || []).map(function(c) { return '- ' + (LEVEL[c.level] || '') + c.text }), '- 機械チェックで気になる点はなし')
-  var assumptionLines = lines((lp.assumptions || []).map(function(a) { return '- ' + a }), '- （前提の情報なし）')
+  function checkLines(arr, empty) { return lines((arr || []).map(function(c) { return '- ' + (LEVEL[c.level] || '') + c.text }), empty) }
 
-  return 'あなたは日本の家計・ライフプランに詳しいファイナンシャルプランナーです。\n' +
-    '以下は家計アプリ「お金ちゃん」のライフプラン（LP）タブに入っている内容と、そのシミュレーション結果です。' +
-    'この内容を診断し、データの過不足と、見込みの精度を上げるために追加すべきデータを日本語で示してください。\n' +
-    '注意: 数字はここに書かれたものだけを根拠にしてください。0円や未入力の項目を「その資産がない」と決めつけず、入力漏れの可能性として扱ってください。\n\n' +
-    '# 今日: ' + (d.today || '') + '\n\n' +
+  function man(n) { return (n < 0 ? '▲' : '') + Math.round(Math.abs(Number(n) || 0) / 10000).toLocaleString() + '万円' }
+  function zero(s, endAge) { return s.zeroAge ? s.zeroAge + '歳で資産が尽きる' : endAge + '歳まで持つ' }
+  var wi = d.whatIfs || {}
+  var whatIfLines = lines((wi.rows || []).map(function(x) {
+    return '- もしも' + x.label + 'が' + Number(x.value).toLocaleString() + x.unit + 'なら → ' + zero(x, x.endAge) + '、退職直前' + man(x.retireAssets) + '、' + x.endAge + '歳時点' + man(x.endAssets)
+  }), '  （条件なし）') + (wi.all ? '\n- 全部あわせると → ' + zero(wi.all, wi.all.endAge) + '、退職直前' + man(wi.all.retireAssets) + '、' + wi.all.endAge + '歳時点' + man(wi.all.endAssets) : '')
+
+  return '# 今日: ' + (d.today || '') + '\n\n' +
     '# パラメータ\n' +
     '- 本人 ' + p.currentAge + '歳 / 退職 ' + p.retireAge + '歳 / 想定寿命 ' + p.lifeExpectancy + '歳 / 年金開始 ' + p.pensionStartAge + '歳\n' +
     '- 妻 ' + p.wifeAge + '歳 / 妻の年金 ' + yen(p.wifePensionMonthly) + '/月（妻' + p.wifePensionStartAge + '歳から）\n' +
     '- 投資利回り ' + p.returnRate + '% / 預金金利 ' + p.cashRate + '% / 物価上昇率 ' + p.inflationRate + '% / 収入の伸び ' + p.incomeGrowth + '%\n' +
-    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '%\n\n' +
-    '# 取得データ（LPタブの値）\n' +
+    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '% / 退職金（手取り） ' + yen(p.retirementBonus) + '\n\n' +
+    '# 取得データ\n' +
     '- 預金 ' + yen(v.cashAssets) + ' / 投資資産（投信＋DC） ' + yen(v.investAssets) + '\n' +
     '- あなたの手取り年収 ' + yen(v.myIncome) + '（' + (notes.income || '') + '）\n' +
     '- 妻の手取り年収: 基本' + yen(w.base) + '/年' + (stageLines ? '、' + stageLines : '') + '（今年 ' + yen(r.wifeIncomeNow) + '）\n' +
@@ -934,30 +879,22 @@ function buildLPDiagPrompt(d) {
     '- ときめき＋冒険 ' + yen(v.yutoriAnnual) + '/年（' + (notes.yutori || '') + '）\n' +
     '- あなたの年金 ' + yen(v.pensionMonthly) + '/月（確認 ' + (dm.pensionYearMonth || '不明') + '）\n' +
     '- 保険返戻予定 ' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件、退職年に一括）\n\n' +
-    '# 口座別残高\n' + assetLines + '\n\n' +
-    '# 投資信託\n' + fundLines + '\n\n' +
-    '# 企業型DC\n' + dcLines + '\n\n' +
+    '# 口座別残高\n' + detail(dm.assets) + '\n\n' +
+    '# 投資信託\n' + detail(dm.funds) + '\n\n' +
+    '# 企業型DC\n' + detail(dm.dc) + '\n\n' +
     '# ライフイベント\n' + eventLines + '\n\n' +
     '# シミュレーション結果\n' +
     '- 今の年間収支（手取り−生活費−投信積立） ' + yen(r.annualSurplusNow) + '\n' +
-    '- 月の生活費（家賃・ときめき込み） ' + yen(r.monthlyLiving) + ' / 退職後 ' + yen(r.retireLiving) + '\n' +
-    '- 退職後の月の生活費の内訳（今の物価）: 生活費 ' + yen(r.retireLivingBase) + ' ＋ 住居費 ' + yen(r.retireHousing) +
+    '- 月の生活費（家賃・ときめき込み） ' + yen(r.monthlyLiving) + '\n' +
+    '- 退職後の月の生活費（今の物価）: 生活費 ' + yen(r.retireLivingBase) + ' ＋ 住居費 ' + yen(r.retireHousing) +
       '（家賃 ' + yen(r.retireRent) + '・維持費 ' + yen(r.retireHomeCost) + '・ローン返済 ' + yen(r.retireLoan) + '）\n' +
     '- 年金合計 ' + yen(r.totalPension) + '/月 / 退職後の月の不足 ' + yen(r.monthlyShortfall) +
       (r.shortfallAfterLoan != null ? '（ローン完済 ' + r.homeLoanEndAge + '歳以降は ' + yen(r.shortfallAfterLoan) + '）' : '') + '\n' +
-    '- 退職時資産 ' + yen(r.retireAssets) + ' / 資産が尽きる年齢 ' + (r.zeroAge ? r.zeroAge + '歳' : 'なし（寿命まで持つ）') +
+    '- 退職直前の資産 ' + yen(r.retireAssets) + ' / 資産が尽きる年齢 ' + (r.zeroAge ? r.zeroAge + '歳' : 'なし（寿命まで持つ）') +
     ' / 寿命まで持たせるための追加積立 ' + (r.requiredExtra > 0 ? yen(r.requiredExtra) + '/月' : '不要') + '\n' +
-    '- 資産推移:\n' + milestoneLines + '\n\n' +
-    '# アプリの機械チェック結果\n' + checkLines + '\n\n' +
-    '# このシミュレーションの計算に入っていないもの・単純化している前提\n' + assumptionLines + '\n\n' +
-    '---\n\n' +
-    '次の4セクションで回答してください。見出しはこのまま使い、具体的な数字を引用し、箇条書き中心で簡潔に。\n\n' +
-    '## 🩺 ライフプラン診断\n' +
-    '（結果の読み解き。どの年齢・どの要因で資産が増減するか、最も効いているリスクは何か。300字程度）\n\n' +
-    '## 📋 データの過不足\n' +
-    '（「足りない・0円・古い」「値が不自然」「十分」に分けて。機械チェック結果も踏まえ、入力漏れか本当に0かの見分け方も一言）\n\n' +
-    '## 🎯 追加すると見込み精度が上がるデータ\n' +
-    '（上の「計算に入っていないもの」も踏まえ、影響が大きい順に5つまで。各項目に「なぜ効くか」「どこで調べられるか（ねんきん定期便・就業規則など）」「ざっくり何円くらい結果が動きうるか」）\n\n' +
-    '## 💡 今すぐやること3つ\n' +
-    '（番号付き。データ入力の作業も含めてよい）'
+    '- 資産推移:\n' + lines((r.milestones || []).map(function(m) { return '  ' + m.age + '歳: ' + yen(m.assets) })) + '\n\n' +
+    '# アプリのチェック結果: データの過不足\n' + checkLines(d.dataChecks, '- 気になる点なし') + '\n\n' +
+    '# アプリのチェック結果: プランのリスク\n' + checkLines(d.planChecks, '- 大きなリスクなし') + '\n\n' +
+    '# もしも比較（本人が設定した条件と、アプリが計算した結果）\n' + whatIfLines + '\n\n' +
+    '# このシミュレーションの計算に入っていないもの・単純化している前提\n' + lines((lp.assumptions || []).map(function(a) { return '- ' + a }), '- （前提の情報なし）')
 }

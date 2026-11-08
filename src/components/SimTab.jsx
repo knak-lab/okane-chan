@@ -6,9 +6,11 @@ import {
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
-import AIDiag from './AIDiag'
+import AIChat from './AIChat'
 import LPCheck from './LPCheck'
-import { DEFAULT_WHATIFS, toYM } from '../utils/lpChecks'
+import {
+  DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField,
+} from '../utils/lpChecks'
 import './SimTab.css'
 
 // ─── 定数 ───────────────────────────────────────
@@ -687,6 +689,28 @@ export default function SimTab() {
     },
   }
 
+  const checks = { data: dataChecks(lp), plan: planChecks(lp) }
+  const whatIfResults = useMemo(
+    () => runWhatIfs(simParams, events, runSim, whatIfs),
+    [simParams, events, whatIfs])
+
+  // AI相談に渡す内容（毎年の推移は大きいので外す）
+  const { series: _series, ...resultsForAI } = lp.results
+  const aiContext = {
+    today: toYM(new Date().toISOString()),
+    lp: { ...lp, results: resultsForAI },
+    dataChecks: checks.data,
+    planChecks: checks.plan,
+    whatIfs: {
+      rows: whatIfs.map((w, i) => {
+        const f = whatIfField(w.key)
+        const r = whatIfResults.rows[i]
+        return { label: f?.label || w.key, unit: f?.unit || '', value: w.value, endAge: r.endAge, ...r.s }
+      }),
+      all: whatIfResults.all ? { endAge: whatIfResults.all.endAge, ...whatIfResults.all.s } : null,
+    },
+  }
+
   // ─── レンダリング ────────────────────────────────
   return (
     <div className="sim-tab">
@@ -1041,11 +1065,11 @@ export default function SimTab() {
       </div>
 
       {/* LPチェック（AIなし・常に表示） */}
-      <LPCheck lp={lp} simParams={simParams} events={events} simulate={runSim}
+      <LPCheck checks={checks} results={whatIfResults} simParams={simParams} events={events}
         whatIfs={whatIfs} setWhatIfs={setWhatIfs} />
 
-      {/* AI診断 */}
-      <AIDiag lp={lp} />
+      {/* AI相談 */}
+      <AIChat context={aiContext} />
 
     </div>
   )

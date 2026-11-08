@@ -153,5 +153,5 @@ export const gasApi = {
   getPensionData: () => get('getPensionData'),
   savePensionData: (records) => postOrQueue({ action: 'savePensionData', records }, 'pension', '年金'),
 
-  diagnose: (diagData) => post({ action: 'diagnose', diagData }),
+  aiChat: (chat) => post({ action: 'aiChat', chat }),
 }

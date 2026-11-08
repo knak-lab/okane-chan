@@ -190,3 +190,16 @@ export function summarize(series, retireAge) {
     endAssets: series.length ? series[series.length - 1].assets : 0,
   }
 }
+
+// 今のプランと、もしも条件ごと（＋全部あわせて）の結果をまとめて計算する
+export function runWhatIfs(simParams, events, simulate, whatIfs) {
+  const run = (conds) => {
+    const a = applyWhatIfs(simParams, events, conds)
+    return { s: summarize(simulate(a.simParams, a.events), a.simParams.retireAge), endAge: a.simParams.endAge }
+  }
+  return {
+    base: run([]),
+    rows: whatIfs.map(w => run([w])),
+    all: whatIfs.length >= 2 ? run(whatIfs) : null,
+  }
+}
