@@ -752,7 +752,8 @@ function callClaudeAPI(diagData) {
     throw new Error('GASのスクリプトプロパティに CLAUDE_API_KEY を設定してください（プロジェクトの設定 → スクリプトプロパティ）')
   }
 
-  const prompt = buildDiagPrompt(diagData)
+  // 新しいフロント（LPタブ診断）は diagData.lp を送ってくる。旧フロントは従来のプロンプト
+  const prompt = diagData && diagData.lp ? buildLPDiagPrompt(diagData) : buildDiagPrompt(diagData)
 
   const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post',
@@ -859,4 +860,101 @@ function buildDiagPrompt(d) {
     '## 🏦 資産状況の健康度\n\n' +
     '## ⚠️ 老後資金リスク\n\n' +
     '## 💡 総合アドバイス（今すぐやるべきこと3つを番号付きで）'
+}
+
+
+// ─────────────────────────────────────────
+//  AI診断（LPタブ）: 診断・データの過不足・精度を上げる追加データ
+// ─────────────────────────────────────────
+function buildLPDiagPrompt(d) {
+  var lp = d.lp || {}
+  var p  = lp.params  || {}
+  var v  = lp.vals    || {}
+  var r  = lp.results || {}
+  var ev = lp.events  || {}
+  var w  = lp.wife    || {}
+  var dm = lp.dataMeta || {}
+  var notes = lp.notes || {}
+
+  function yen(n) { return '¥' + Math.round(Number(n) || 0).toLocaleString() }
+  function onOff(e) { return e && e.enabled ? 'オン' : 'オフ' }
+  function lines(arr, empty) { return arr.length ? arr.join('\n') : (empty || '  データなし') }
+
+  var assetLines = lines((d.assets || [])
+    .sort(function(a, b) { return b.amount - a.amount })
+    .map(function(a) { return '  [' + a.kubun + '] ' + a.name + ': ' + yen(a.amount) + '（' + (a.month || '月不明') + '時点）' }))
+  var fundLines = lines((d.funds || []).map(function(f) {
+    return '  ' + f.name + ': 評価額' + yen(f.eval) + '（' + (f.month || '記録なし') + '）, 損益' + yen(f.pnl) + ', 積立' + yen(f.monthlyAmt) + '/月'
+  }))
+  var dcLines = lines((d.dc || []).map(function(a) {
+    return '  ' + a.institution + ': 評価額' + yen(a.eval) + '（' + (a.month || '記録なし') + '）, 掛金' + yen(a.companyAmt + a.selfAmt) + '/月'
+  }))
+
+  var stageLines = (w.stages || []).map(function(st) {
+    return '末っ子' + st.fromAge + '歳から+' + yen(st.add) + '/年'
+  }).join('、')
+
+  var children = ['child1', 'child2'].map(function(k, i) {
+    var c = ev[k] || {}
+    return '- 第' + (i + 1) + '子: ' + onOff(c) + (c.enabled ? '（現在' + c.currentAge + '歳、' + c.edu + '）' : '')
+  }).join('\n')
+  var car = ev.car || {}
+  var dog = ev.dog || {}
+  var home = ev.home || {}
+  var eventLines = children + '\n' +
+    '- 車: ' + onOff(car) + (car.enabled ? '（' + car.yearsFromNow + '年後に' + yen(car.price) + '、' + car.replaceEvery + '年ごと買替、維持費' + yen(car.monthlyFee) + '/月、' + car.sellAge + '歳で手放す）' : '') + '\n' +
+    '- 犬: ' + onOff(dog) + (dog.enabled ? '（' + dog.yearsFromNow + '年後から' + dog.years + '年、初期' + yen(dog.initialCost) + '、年' + yen(dog.annualCost) + '）' : '') + '\n' +
+    '- マイホーム: ' + onOff(home) + (home.enabled ? '（' + home.yearsFromNow + '年後、土地' + yen(home.landPrice) + '+建物' + yen(home.buildingPrice) +
+      '、頭金' + yen(home.downPayment) + '、諸経費' + home.feeRate + '%、ローン' + home.loanYears + '年' + home.loanRate + '%、維持費' + yen(home.monthlyCost) +
+      '/月、' + home.repairEvery + '年ごと修繕' + yen(home.repairCost) + '、購入後の家賃' + (home.stopRent ? '不要' : '継続') +
+      '、' + (ev.homestLinked ? '家タブと連携' : '手入力') + '）' : '')
+
+  var milestoneLines = lines((r.milestones || []).map(function(m) { return '  ' + m.age + '歳: ' + yen(m.assets) }))
+
+  var LEVEL = { ng: '【不足】', warn: '【要確認】', info: '【参考】' }
+  var checkLines = lines((d.checks || []).map(function(c) { return '- ' + (LEVEL[c.level] || '') + c.text }), '- 機械チェックで気になる点はなし')
+  var assumptionLines = lines((lp.assumptions || []).map(function(a) { return '- ' + a }), '- （前提の情報なし）')
+
+  return 'あなたは日本の家計・ライフプランに詳しいファイナンシャルプランナーです。\n' +
+    '以下は家計アプリ「お金ちゃん」のライフプラン（LP）タブに入っている内容と、そのシミュレーション結果です。' +
+    'この内容を診断し、データの過不足と、見込みの精度を上げるために追加すべきデータを日本語で示してください。\n' +
+    '注意: 数字はここに書かれたものだけを根拠にしてください。0円や未入力の項目を「その資産がない」と決めつけず、入力漏れの可能性として扱ってください。\n\n' +
+    '# 今日: ' + (d.today || '') + '\n\n' +
+    '# パラメータ\n' +
+    '- 本人 ' + p.currentAge + '歳 / 退職 ' + p.retireAge + '歳 / 想定寿命 ' + p.lifeExpectancy + '歳 / 年金開始 ' + p.pensionStartAge + '歳\n' +
+    '- 妻 ' + p.wifeAge + '歳 / 妻の年金 ' + yen(p.wifePensionMonthly) + '/月（妻' + p.wifePensionStartAge + '歳から）\n' +
+    '- 投資利回り ' + p.returnRate + '% / 預金金利 ' + p.cashRate + '% / 物価上昇率 ' + p.inflationRate + '% / 収入の伸び ' + p.incomeGrowth + '%\n' +
+    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '%\n\n' +
+    '# 取得データ（LPタブの値）\n' +
+    '- 預金 ' + yen(v.cashAssets) + ' / 投資資産（投信＋DC） ' + yen(v.investAssets) + '\n' +
+    '- あなたの手取り年収 ' + yen(v.myIncome) + '（' + (notes.income || '') + '）\n' +
+    '- 妻の手取り年収: 基本' + yen(w.base) + '/年' + (stageLines ? '、' + stageLines : '') + '（今年 ' + yen(r.wifeIncomeNow) + '）\n' +
+    '- 投信積立 ' + yen(v.monthlyFundInvest) + '/月 / DC掛金 ' + yen(v.monthlyDCInvest) + '/月\n' +
+    '- 生活費（安心＋彩り） ' + yen(v.monthlyExpense) + '/月（' + (notes.expense || '') + '）\n' +
+    '- ときめき＋冒険 ' + yen(v.yutoriAnnual) + '/年（' + (notes.yutori || '') + '）\n' +
+    '- あなたの年金 ' + yen(v.pensionMonthly) + '/月（確認 ' + (dm.pensionYearMonth || '不明') + '）\n' +
+    '- 保険返戻予定 ' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件、退職年に一括）\n\n' +
+    '# 口座別残高\n' + assetLines + '\n\n' +
+    '# 投資信託\n' + fundLines + '\n\n' +
+    '# 企業型DC\n' + dcLines + '\n\n' +
+    '# ライフイベント\n' + eventLines + '\n\n' +
+    '# シミュレーション結果\n' +
+    '- 今の年間収支（手取り−生活費−投信積立） ' + yen(r.annualSurplusNow) + '\n' +
+    '- 月の生活費（家賃・ときめき込み） ' + yen(r.monthlyLiving) + ' / 退職後 ' + yen(r.retireLiving) + '\n' +
+    '- 年金合計 ' + yen(r.totalPension) + '/月 / 退職後の月の不足 ' + yen(r.monthlyShortfall) + '\n' +
+    '- 退職時資産 ' + yen(r.retireAssets) + ' / 資産が尽きる年齢 ' + (r.zeroAge ? r.zeroAge + '歳' : 'なし（寿命まで持つ）') +
+    ' / 寿命まで持たせるための追加積立 ' + (r.requiredExtra > 0 ? yen(r.requiredExtra) + '/月' : '不要') + '\n' +
+    '- 資産推移:\n' + milestoneLines + '\n\n' +
+    '# アプリの機械チェック結果\n' + checkLines + '\n\n' +
+    '# このシミュレーションの計算に入っていないもの・単純化している前提\n' + assumptionLines + '\n\n' +
+    '---\n\n' +
+    '次の4セクションで回答してください。見出しはこのまま使い、具体的な数字を引用し、箇条書き中心で簡潔に。\n\n' +
+    '## 🩺 ライフプラン診断\n' +
+    '（結果の読み解き。どの年齢・どの要因で資産が増減するか、最も効いているリスクは何か。300字程度）\n\n' +
+    '## 📋 データの過不足\n' +
+    '（「足りない・0円・古い」「値が不自然」「十分」に分けて。機械チェック結果も踏まえ、入力漏れか本当に0かの見分け方も一言）\n\n' +
+    '## 🎯 追加すると見込み精度が上がるデータ\n' +
+    '（上の「計算に入っていないもの」も踏まえ、影響が大きい順に5つまで。各項目に「なぜ効くか」「どこで調べられるか（ねんきん定期便・就業規則など）」「ざっくり何円くらい結果が動きうるか」）\n\n' +
+    '## 💡 今すぐやること3つ\n' +
+    '（番号付き。データ入力の作業も含めてよい）'
 }
