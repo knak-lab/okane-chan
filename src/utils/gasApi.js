@@ -1,5 +1,6 @@
 import { categorize } from './categorize'
 import { withIdToken } from '../auth/googleAuth'
+import { enqueue, supersede, setOutboxSender } from './outbox'
 
 export const GAS_URL = import.meta.env.VITE_GAS_URL || ''
 export const isGasReady = () => Boolean(GAS_URL)
@@ -18,17 +19,47 @@ async function get(action, params = {}) {
   return json
 }
 
+// 通信できなかった・サーバーが落ちていたなど、あとで送り直せば通る失敗
+function retryable(message) {
+  const e = new Error(message)
+  e.retryable = true
+  return e
+}
+
 async function post(body) {
   if (!GAS_URL) throw new Error('GAS_URLが設定されていません')
   const json = await withIdToken(async (idToken) => {
-    const res = await fetch(GAS_URL, {
-      method: 'POST',
-      body: new URLSearchParams({ data: JSON.stringify({ ...body, id_token: idToken }) }),
-    })
-    return res.json()
+    let res
+    try {
+      res = await fetch(GAS_URL, {
+        method: 'POST',
+        body: new URLSearchParams({ data: JSON.stringify({ ...body, id_token: idToken }) }),
+      })
+    } catch {
+      throw retryable('通信できませんでした')
+    }
+    try { return await res.json() } catch { throw retryable(`サーバーの応答が不正です（${res.status}）`) }
   })
-  if (!json.ok) throw new Error(json.error || 'API error')
+  if (!json.ok) {
+    if (/^unauthorized|unavailable/i.test(String(json.error || ''))) throw retryable(json.error)
+    throw new Error(json.error || 'API error')
+  }
   return json
+}
+setOutboxSender(post)
+
+// 送れなかったら未送信の箱に入れて、あとで自動で送り直す保存。
+// 同じ内容を2回送っても結果が変わらない保存（上書き保存）だけに使う
+async function postOrQueue(body, key, label) {
+  try {
+    const json = await post(body)
+    supersede(key)
+    return json
+  } catch (e) {
+    if (!e.retryable) throw e
+    enqueue({ key, label, body, error: e.message })
+    return { ok: true, queued: true }
+  }
 }
 
 function parseAmt(s) {
@@ -82,7 +113,7 @@ export const gasApi = {
 
   // 同じ取引番号の支払い行とポイント行を区別するため、取引日・金額も送って行を特定する
   updateTransactionCategory: (t, category) =>
-    post({
+    postOrQueue({
       action: 'updateTransactionCategory',
       txId: t.id,
       category,
@@ -91,7 +122,7 @@ export const gasApi = {
         '出金金額（円）': t['出金金額（円）'],
         '入金金額（円）': t['入金金額（円）'],
       },
-    }),
+    }, `cat:${[t.id, t['取引日'], t['出金金額（円）'], t['入金金額（円）']].join('|')}`, `カテゴリ変更：${t.description || t.id}`),
 
   clearMonth: (month) => post({ action: 'clearMonth', month }),
 
@@ -99,10 +130,10 @@ export const gasApi = {
   saveAssets: (assets) => post({ action: 'saveAssets', assets }),
 
   getAnnualPlan: (year) => get('getAnnualPlan', { year }),
-  saveAnnualPlan: (year, plan) => post({ action: 'saveAnnualPlan', year, plan }),
+  saveAnnualPlan: (year, plan) => postOrQueue({ action: 'saveAnnualPlan', year, plan }, `plan:${year}`, `年間計画 ${year}年`),
 
   getPJData: (type) => get('getPJData', { type }),
-  savePJData: (type, data) => post({ action: 'savePJData', type, data }),
+  savePJData: (type, data) => postOrQueue({ action: 'savePJData', type, data }, `pj:${type}`, `設定（${type}）`),
 
   getCategoryRules: () => get('getCategoryRules'),
   saveCategoryRules: (rules) => post({ action: 'saveCategoryRules', rules }),
@@ -111,16 +142,16 @@ export const gasApi = {
   deleteCategoryRule: (keyword) => post({ action: 'deleteCategoryRule', keyword }),
 
   getInsurances: () => get('getInsurances'),
-  saveInsurances: (data) => post({ action: 'saveInsurances', ...data }),
+  saveInsurances: (data) => postOrQueue({ action: 'saveInsurances', ...data }, 'insurances', '保険'),
 
   getInvestmentFunds: () => get('getInvestmentFunds'),
-  saveInvestmentFunds: (data) => post({ action: 'saveInvestmentFunds', ...data }),
+  saveInvestmentFunds: (data) => postOrQueue({ action: 'saveInvestmentFunds', ...data }, 'funds', '投資信託'),
 
   getDCAccounts: () => get('getDCAccounts'),
-  saveDCAccounts: (data) => post({ action: 'saveDCAccounts', ...data }),
+  saveDCAccounts: (data) => postOrQueue({ action: 'saveDCAccounts', ...data }, 'dc', 'DC'),
 
   getPensionData: () => get('getPensionData'),
-  savePensionData: (records) => post({ action: 'savePensionData', records }),
+  savePensionData: (records) => postOrQueue({ action: 'savePensionData', records }, 'pension', '年金'),
 
   diagnose: (diagData) => post({ action: 'diagnose', diagData }),
 }

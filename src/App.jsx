@@ -11,6 +11,8 @@ import InsuranceSimulator from './components/InsuranceSimulator'
 import SimTab from './components/SimTab'
 import { isGasReady } from './utils/gasApi'
 import { syncRulesWithGas } from './utils/customRules'
+import OutboxBadge from './components/OutboxBadge'
+import { LockButton } from './auth/AuthGate'
 import './App.css'
 
 const TABS = [
@@ -45,7 +47,9 @@ export default function App() {
       <header className="header">
         <span className="header-icon">💰</span>
         <h1>お金ちゃん管理</h1>
+        <LockButton style={{ marginLeft: 'auto', position: 'absolute', right: 16, background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} />
       </header>
+      <OutboxBadge />
 
       <nav className="tab-nav">
         {TABS.map((tab) =>

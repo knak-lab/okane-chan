@@ -116,7 +116,7 @@ export function categorize(description) {
   if (!description) return DEFAULT_CATEGORY
   const lower = description.toLowerCase()
 
-  // カスタムルール優先（localStorage）
+  // カスタムルール優先（端末の金庫に保存）
   const custom = loadCustomRules()
   for (const [kw, cat] of Object.entries(custom)) {
     if (lower.includes(kw.toLowerCase())) return cat

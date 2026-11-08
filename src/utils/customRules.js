@@ -1,17 +1,19 @@
 import { gasApi, isGasReady } from './gasApi'
+import { vaultGet, vaultSet } from '../auth/vault'
 
 const KEY = 'okane_custom_cat_rules'
 // スプシ未反映の操作（送信失敗・オフライン時）。起動時に再送してから突き合わせる
 const PENDING_ADD_KEY = 'okane_custom_cat_rules_pending_add'
 const PENDING_DEL_KEY = 'okane_custom_cat_rules_pending_del'
 
+// 端末の金庫（vault）に暗号化して置く。鍵がかかっている間は読めない
 function readJson(key, fallback) {
-  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback }
+  try { return vaultGet(key) ?? fallback }
   catch { return fallback }
 }
 
 function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value))
+  vaultSet(key, value)
 }
 
 export function loadCustomRules() {

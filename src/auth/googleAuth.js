@@ -6,13 +6,17 @@
 //  ・GAS 側で「本物のトークンか」「登録されたメールか」を確認する
 //    → サイトのJSを読まれても、データにはアクセスできない
 //
-//  knak-lab.github.io 配下のアプリは localStorage を共有するので、
-//  1つのアプリでログインすれば他のアプリでもそのまま使える。
+//  IDトークンは他アプリと共有しない。お金ちゃんの金庫（vault）に暗号化して置き、
+//  鍵がかかったら（無操作1時間など）メモリからも消す。
+//  同じアカウントで自動ログインできるよう、前回のメールを login_hint に使う。
 // =============================================================
+
+import { vaultGet, vaultSet, vaultRemove, subscribeVault, getVaultState } from './vault'
 
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
-const STORAGE_KEY = 'knak_google_id_token'
+const VAULT_TOKEN_KEY = 'google:idToken'
+let memToken = '' // 金庫を開く前（初回ログイン直後）だけ使う
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const EXPIRY_MARGIN_SEC = 120
 
@@ -72,13 +76,11 @@ function decodePayload(token) {
   }
 }
 
+// 鍵がかかったらトークンも忘れる
+subscribeVault((v) => { if (v.status !== 'unlocked') memToken = '' })
+
 function readStoredToken() {
-  let token = ''
-  try {
-    token = localStorage.getItem(STORAGE_KEY) || ''
-  } catch {
-    return null
-  }
+  const token = (getVaultState().status === 'unlocked' && vaultGet(VAULT_TOKEN_KEY)) || memToken
   if (!token) return null
   const payload = decodePayload(token)
   if (!payload || !payload.exp) return null
@@ -87,19 +89,18 @@ function readStoredToken() {
 }
 
 function storeToken(token) {
-  try {
-    localStorage.setItem(STORAGE_KEY, token)
-  } catch {
-    /* プライベートモード等では保存できない（このタブの間だけ有効） */
-  }
+  memToken = token
+  if (getVaultState().status === 'unlocked') vaultSet(VAULT_TOKEN_KEY, token)
+}
+
+// 金庫を開いたら、初回ログインで受け取ったトークンを金庫へ移す
+export function persistTokenToVault() {
+  if (memToken && getVaultState().status === 'unlocked') vaultSet(VAULT_TOKEN_KEY, memToken)
 }
 
 function clearStoredToken() {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    /* noop */
-  }
+  memToken = ''
+  try { vaultRemove(VAULT_TOKEN_KEY) } catch { /* noop */ }
 }
 
 function loadGis() {
@@ -138,6 +139,7 @@ async function ensureInitialized() {
       client_id: GOOGLE_CLIENT_ID,
       callback: handleCredential,
       auto_select: true,
+      ...(getVaultState().email ? { login_hint: getVaultState().email } : {}),
       cancel_on_tap_outside: false,
       use_fedcm_for_prompt: true,
     })
