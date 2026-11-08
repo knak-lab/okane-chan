@@ -6,7 +6,11 @@ import {
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
-import AIDiag from './AIDiag'
+import AIChat from './AIChat'
+import LPCheck from './LPCheck'
+import {
+  DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField,
+} from '../utils/lpChecks'
 import './SimTab.css'
 
 // ─── 定数 ───────────────────────────────────────
@@ -116,7 +120,7 @@ function wifeIncomeAt(wife, children, t) {
 // AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
-  '退職金・企業年金の一時金は入っていない（保険返戻金のみ退職年に一括加算）',
+  '退職金はパラメータの「退職金（手取り）」を退職年に一括加算（企業年金の年金払いは入っていない）。保険返戻金も退職年に一括加算',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）。DCも退職前に取り崩せる扱い',
@@ -133,7 +137,7 @@ function runSim(p, events) {
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn, retireExpenseRate = 100 } = p
+          insuranceReturn, retirementBonus = 0, retireExpenseRate = 100 } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -147,7 +151,7 @@ function runSim(p, events) {
     : 0
 
   for (let age = startAge; age <= endAge; age++) {
-    data.push({ age, assets: Math.round(cash + invest) })
+    data.push({ age, assets: Math.round(cash + invest), cash: Math.round(cash), invest: Math.round(invest) })
 
     const t          = age - startAge
     const infl       = (1 + (inflationRate || 0) / 100) ** t
@@ -209,8 +213,8 @@ function runSim(p, events) {
       }
     }
 
-    // 退職時に保険返戻金を一括加算
-    const lump = age === retireAge && insuranceReturn > 0 ? insuranceReturn : 0
+    // 退職時に保険返戻金と退職金を一括加算
+    const lump = age === retireAge ? (insuranceReturn > 0 ? insuranceReturn : 0) + (Number(retirementBonus) || 0) : 0
 
     invest += Math.max(0, invest) * rInvest + fundInvest + dcInvest + extra
     cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost + lump
@@ -355,6 +359,7 @@ export default function SimTab() {
     wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
+    retirementBonus: 0,     // 退職金（手取り・退職年に一括）
   })
 
   const [vals, setVals] = useState({
@@ -386,6 +391,7 @@ export default function SimTab() {
   const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立' })
   const [dog,    setDog]    = useState({ enabled: false, size: 'small', yearsFromNow: 1, initialCost: 300_000, ...DOG_SIZES.small.defaults })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
+  const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
@@ -401,7 +407,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -417,6 +423,7 @@ export default function SimTab() {
           if (s.dog)    setDog(d => ({ ...d, ...s.dog }))
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
           if (s.wife)   setWife(w => ({ ...w, ...s.wife }))
+          if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs)
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -542,7 +549,23 @@ export default function SimTab() {
       })
       const insuranceReturn = Math.round(totalInsUSD * usdJpy)
 
+      // 鮮度チェック用の明細（口座・投信・DCごとに、金額が入っている最新の月）
+      const latestNonBlank = (recs, monthKey, valueKey) => [...recs]
+        .filter(r => r[valueKey] !== '' && r[valueKey] != null)
+        .sort((a, b) => toYM(b[monthKey]).localeCompare(toYM(a[monthKey])))[0]
+      const assetDetail = Object.values(accMap).map(recs => {
+        const r = latestNonBlank(recs, '月', '金額')
+        return r ? { kubun: r['区分'], name: r['口座名'], month: toYM(r['月']), amount: parseAmt(r['金額']) } : null
+      }).filter(Boolean)
+      const fundDetail = (fundsRes?.masters || []).map(m => ({
+        name: m['ファンド名'], month: toYM(fundLatest[m['ファンド名']]?.['年月']), amount: parseAmt(fundLatest[m['ファンド名']]?.['評価額']),
+      }))
+      const dcDetail = (dcRes?.masters || []).map(m => ({
+        name: m['運用機関'], month: toYM(dcLatest[m['運用機関']]?.['年月']), amount: parseAmt(dcLatest[m['運用機関']]?.['評価額']),
+      }))
+
       setDataMeta({
+        assets: assetDetail, funds: fundDetail, dc: dcDetail,
         failedFetches,
         expenseMonthsUsed: used,
         expenseMonthsExcluded: excluded,
@@ -572,7 +595,7 @@ export default function SimTab() {
 
 
   const { retireAge, lifeExpectancy, pensionStartAge } = params
-  const { cashAssets, investAssets, monthlyExpense, pensionMonthly } = vals
+  const { monthlyExpense, pensionMonthly } = vals
 
   // ─── シミュレーション ────────────────────────────
   const simParams = useMemo(() => ({
@@ -599,6 +622,7 @@ export default function SimTab() {
     pensionMonthly:  vals.pensionMonthly,
     insuranceReturn: vals.insuranceReturn,
     retireExpenseRate: params.retireExpenseRate,
+    retirementBonus: params.retirementBonus,
   }), [params, vals, wife])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
@@ -630,8 +654,62 @@ export default function SimTab() {
   const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
     - monthlyLiving * 12 - vals.monthlyFundInvest * 12
   const totalPension     = pensionMonthly + params.wifePensionMonthly
-  const retireLiving     = (monthlyExpense + vals.yutoriAnnual / 12) * params.retireExpenseRate / 100 + params.monthlyRent
+  // 退職後の住居費（今の物価・月額）。シミュレーションと同じく、マイホーム購入後は家賃を止めて維持費とローン返済を入れる
+  const retireT          = retireAge - params.currentAge
+  const homeOn           = homeEff.enabled && Number(homeEff.yearsFromNow) <= retireT
+  const homeLoanEndAge   = homeOn ? params.currentAge + Number(homeEff.yearsFromNow) + Number(homeEff.loanYears) : null
+  const homeLoanMonthly  = homeOn
+    ? annualLoanPayment(homePrice(homeEff) - Number(homeEff.downPayment), homeEff.loanRate, Number(homeEff.loanYears)) / 12
+    : 0
+  const retireRent       = homeOn && homeEff.stopRent ? 0 : params.monthlyRent
+  const retireHomeCost   = homeOn ? Number(homeEff.monthlyCost) : 0
+  const retireLoan       = homeOn && homeLoanEndAge > retireAge ? homeLoanMonthly : 0
+  const retireLivingBase = (monthlyExpense + vals.yutoriAnnual / 12) * params.retireExpenseRate / 100
+  const retireHousing    = retireRent + retireHomeCost + retireLoan
+  const retireLiving     = retireLivingBase + retireHousing
   const monthlyShortfall = Math.max(0, retireLiving - totalPension)
+  // ローンが退職後に残る場合、完済後の不足額
+  const shortfallAfterLoan = retireLoan > 0 ? Math.max(0, retireLiving - retireLoan - totalPension) : null
+
+  // LPチェック・AIに渡すLPタブの中身
+  const lp = {
+    params, vals, wife, dataMeta, assumptions: MODEL_ASSUMPTIONS,
+    notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
+    events: { child1, child2, car, dog, home: homeEff, homestLinked },
+    results: {
+      retireAssets, zeroAge, monthlyShortfall, requiredExtra,
+      retireLivingBase, retireHousing, retireRent, retireHomeCost, retireLoan, homeLoanEndAge, shortfallAfterLoan,
+      annualSurplusNow, totalPension, retireLiving, monthlyLiving,
+      wifeIncomeNow: wifeIncomeAt(wife, [child1, child2], 0),
+      // 5歳刻み＋退職・年金開始・最終年の資産推移
+      milestones: sim.filter(d =>
+        d.age % 5 === 0 || d.age === retireAge || d.age === pensionStartAge || d.age === lifeExpectancy),
+      series: sim,  // 毎年の預金・投資（LPチェックの判定用）
+      homeLoanMonthly,
+    },
+  }
+
+  const checks = { data: dataChecks(lp), plan: planChecks(lp) }
+  const whatIfResults = useMemo(
+    () => runWhatIfs(simParams, events, runSim, whatIfs),
+    [simParams, events, whatIfs])
+
+  // AI相談に渡す内容（毎年の推移は大きいので外す）
+  const { series: _series, ...resultsForAI } = lp.results
+  const aiContext = {
+    today: toYM(new Date().toISOString()),
+    lp: { ...lp, results: resultsForAI },
+    dataChecks: checks.data,
+    planChecks: checks.plan,
+    whatIfs: {
+      rows: whatIfs.map((w, i) => {
+        const f = whatIfField(w.key)
+        const r = whatIfResults.rows[i]
+        return { label: f?.label || w.key, unit: f?.unit || '', value: w.value, endAge: r.endAge, ...r.s }
+      }),
+      all: whatIfResults.all ? { endAge: whatIfResults.all.endAge, ...whatIfResults.all.s } : null,
+    },
+  }
 
   // ─── レンダリング ────────────────────────────────
   return (
@@ -672,6 +750,7 @@ export default function SimTab() {
             { label: '妻の年金',         key: 'wifePensionMonthly',  unit: '円 / 月', note: 'ねんきん定期便の見込み額' },
             { label: '妻の年金開始年齢', key: 'wifePensionStartAge', unit: '歳（妻の年齢）' },
             { label: '退職後の生活費',   key: 'retireExpenseRate', unit: '%', note: '現役時に対する割合。家賃は対象外' },
+            { label: '退職金（手取り）', key: 'retirementBonus',   unit: '円', note: '退職年に一括で入る。就業規則・退職金規程で確認' },
             { label: '家賃',             key: 'monthlyRent',   unit: '円 / 月', note: '老後も払う前提。マイホーム購入後は不要' },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
@@ -953,7 +1032,16 @@ export default function SimTab() {
           <SumCard
             label="月の不足額"
             value={monthlyShortfall > 0 ? fmt(monthlyShortfall) : '不足なし ✓'}
-            sub={`退職後の生活費（${params.retireExpenseRate}%）− 年金`}
+            sub={
+              `生活費 ${fmt(retireLivingBase)}（${params.retireExpenseRate}%）＋ 住居費 ${fmt(retireHousing)}` +
+              (homeOn
+                ? `（${retireRent ? `家賃 ${fmt(retireRent)}・` : ''}維持費 ${fmt(retireHomeCost)}${retireLoan ? `・ローン ${fmt(retireLoan)}` : ''}）`
+                : '（家賃）') +
+              ` − 年金 ${fmt(totalPension)}` +
+              (shortfallAfterLoan != null
+                ? `。ローン完済（${homeLoanEndAge}歳）後は ${shortfallAfterLoan > 0 ? fmt(shortfallAfterLoan) : '不足なし'}`
+                : '')
+            }
             pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
           <SumCard
             label="資産が尽きる年齢"
@@ -976,20 +1064,12 @@ export default function SimTab() {
         </div>
       </div>
 
-      {/* AI診断 */}
-      <AIDiag lp={{
-        params, vals, wife, dataMeta, assumptions: MODEL_ASSUMPTIONS,
-        notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
-        events: { child1, child2, car, dog, home: homeEff, homestLinked },
-        results: {
-          retireAssets, zeroAge, monthlyShortfall, requiredExtra,
-          annualSurplusNow, totalPension, retireLiving, monthlyLiving,
-          wifeIncomeNow: wifeIncomeAt(wife, [child1, child2], 0),
-          // 5歳刻み＋退職・年金開始・最終年の資産推移
-          milestones: sim.filter(d =>
-            d.age % 5 === 0 || d.age === retireAge || d.age === pensionStartAge || d.age === lifeExpectancy),
-        },
-      }} />
+      {/* LPチェック（AIなし・常に表示） */}
+      <LPCheck checks={checks} results={whatIfResults} simParams={simParams} events={events}
+        whatIfs={whatIfs} setWhatIfs={setWhatIfs} />
+
+      {/* AI相談 */}
+      <AIChat context={aiContext} />
 
     </div>
   )

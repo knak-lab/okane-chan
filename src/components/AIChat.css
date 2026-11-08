@@ -1,0 +1,152 @@
+/* ─── AI相談 ──────────────────────────────────── */
+.aic {
+  background: linear-gradient(135deg, #eef2ff 0%, #fff 60%);
+  border: 1px solid #c7d5f5;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin-top: 0.875rem;
+}
+.aic-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.aic-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #003087;
+  margin: 0 0 0.2rem;
+}
+.aic-desc {
+  font-size: 0.75rem;
+  color: #666;
+  margin: 0;
+}
+.aic-reset {
+  flex-shrink: 0;
+  background: #fff;
+  border: 1.5px solid #c7d5f5;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #003087;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.aic-log {
+  margin: 0.75rem 0 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.aic-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.aic-chip {
+  background: #fff;
+  border: 1px solid #c7d5f5;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  color: #003087;
+  cursor: pointer;
+  text-align: left;
+}
+
+.aic-msg {
+  font-size: 0.85rem;
+  line-height: 1.65;
+  border-radius: 10px;
+  padding: 0.55rem 0.75rem;
+  max-width: 92%;
+  word-break: break-word;
+}
+.aic-user {
+  align-self: flex-end;
+  background: #003087;
+  color: #fff;
+  white-space: pre-wrap;
+}
+.aic-ai {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #e1e7f5;
+  color: #222;
+}
+.aic-md p { margin: 0 0 0.4rem; }
+.aic-md p:last-child { margin-bottom: 0; }
+.aic-md ul { margin: 0.2rem 0 0.4rem; padding-left: 1.2rem; }
+.aic-md li { margin-bottom: 0.15rem; }
+.aic-cost {
+  font-size: 0.68rem;
+  color: #999;
+  text-align: right;
+  margin-top: 0.2rem;
+}
+.aic-note {
+  align-self: center;
+  font-size: 0.72rem;
+  color: #888;
+}
+.aic-thinking {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #666;
+}
+.aic-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #c7d5f5;
+  border-top-color: #003087;
+  border-radius: 50%;
+  animation: aic-spin 0.75s linear infinite;
+}
+@keyframes aic-spin { to { transform: rotate(360deg); } }
+
+.aic-error {
+  margin-bottom: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  background: #fff5f5;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #721c24;
+}
+.aic-error p { margin: 0.35rem 0 0; color: #555; }
+
+.aic-form {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-end;
+}
+.aic-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px; /* iPhone で入力時に拡大しないように */
+  font-family: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #c7d5f5;
+  border-radius: 8px;
+  resize: vertical;
+}
+.aic-send {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #003087, #1a5ab5);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.aic-send:disabled { opacity: 0.45; cursor: not-allowed; }
+.aic-total {
+  font-size: 0.7rem;
+  color: #999;
+  text-align: right;
+  margin-top: 0.3rem;
+}
