@@ -113,6 +113,21 @@ function wifeIncomeAt(wife, children, t) {
 //         DC掛金は給与天引き・会社拠出なので手取りからは引かず、投資に直接入る。
 // 退職後：生活費を預金から払い、年金を受け取る。預金が尽きたら投資を取り崩す。
 // 支出・年金・イベント費用は物価上昇率、収入は収入の伸び率で毎年増やす（ローン返済額は固定）。
+// AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
+// runSim を変えたらここも合わせて直す
+const MODEL_ASSUMPTIONS = [
+  '退職金・企業年金の一時金は入っていない（保険返戻金のみ退職年に一括加算）',
+  '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
+  '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
+  '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）。DCも退職前に取り崩せる扱い',
+  '妻の収入はあなたの退職と同時にゼロになる',
+  '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
+  '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
+  '住宅ローン控除・固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
+  '相続・贈与・親の援助や介護、iDeCo/NISAの税制差は入っていない',
+  '家賃は購入しない限り老後もずっと同額（物価上昇分は上がる）',
+]
+
 function runSim(p, events) {
   const { startAge, endAge, cashAssets, investAssets, retireAge, pensionStartAge,
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
@@ -358,6 +373,8 @@ export default function SimTab() {
   const [yutoriNote, setYutoriNote]   = useState('年間タブの年額')
 
   const [loadStatus, setLoadStatus] = useState('idle')
+  // AI診断で「データの過不足」を判断するための取得状況
+  const [dataMeta,   setDataMeta]   = useState({})
   const [loadMsg,    setLoadMsg]    = useState('')
 
   // 妻の手取り年収：基本額＋末っ子が各年齢に達したら上乗せ
@@ -436,6 +453,8 @@ export default function SimTab() {
       ])
       const [assetsRes, fundsRes, dcRes, txRes, pensionRes, insRes, rateRes, planRes] =
         settled.map(r => r.status === 'fulfilled' ? r.value : null)
+      const fetchNames = ['資産', '投資信託', 'DC', '取引', '年金', '保険', '為替', '年間計画']
+      const failedFetches = fetchNames.filter((_, i) => settled[i].status !== 'fulfilled' || !settled[i].value)
 
       // 総資産: 口座ごとに最新の非空金額を合計（空月レコードをスキップ）
       const accMap = {}
@@ -523,6 +542,17 @@ export default function SimTab() {
       })
       const insuranceReturn = Math.round(totalInsUSD * usdJpy)
 
+      setDataMeta({
+        failedFetches,
+        expenseMonthsUsed: used,
+        expenseMonthsExcluded: excluded,
+        hasAnnualPlan: Boolean(plan),
+        pensionYearMonth: pRecs[0]?.['確認年月'] || '',
+        insurancePolicies: insMasters.length,
+        insuranceUSD: totalInsUSD,
+        usdJpy,
+        usdJpyFallback: !rateRes?.rates?.JPY,
+      })
       setParams(p => ({ ...p, currentAge: currentAgeNow }))
       setVals(v => ({
         ...v,
@@ -947,16 +977,19 @@ export default function SimTab() {
       </div>
 
       {/* AI診断 */}
-      <AIDiag
-        simParams={params}
-        simVals={{ ...vals, totalAssets: cashAssets + investAssets }}
-        simResults={{
-          retireAssets,
-          zeroAge,
-          monthlyShortfall,
-          requiredExtra,
-        }}
-      />
+      <AIDiag lp={{
+        params, vals, wife, dataMeta, assumptions: MODEL_ASSUMPTIONS,
+        notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
+        events: { child1, child2, car, dog, home: homeEff, homestLinked },
+        results: {
+          retireAssets, zeroAge, monthlyShortfall, requiredExtra,
+          annualSurplusNow, totalPension, retireLiving, monthlyLiving,
+          wifeIncomeNow: wifeIncomeAt(wife, [child1, child2], 0),
+          // 5歳刻み＋退職・年金開始・最終年の資産推移
+          milestones: sim.filter(d =>
+            d.age % 5 === 0 || d.age === retireAge || d.age === pensionStartAge || d.age === lifeExpectancy),
+        },
+      }} />
 
     </div>
   )
