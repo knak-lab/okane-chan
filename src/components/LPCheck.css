@@ -1,0 +1,109 @@
+/* ─── LPチェック ──────────────────────────────── */
+.lpc-block {
+  border-top: 1px solid #f0f0f0;
+  padding: 0.6rem 0;
+}
+.lpc-block:first-of-type { border-top: none; }
+
+.lpc-block > summary,
+.lpc-block-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #003087;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.lpc-block-title { cursor: default; }
+
+.lpc-badge {
+  font-weight: 400;
+  font-size: 0.78rem;
+  margin-left: 0.4rem;
+  color: #666;
+}
+
+.lpc-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.lpc-item {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 0.3rem;
+  display: flex;
+  gap: 0.35rem;
+}
+.lpc-icon { flex-shrink: 0; }
+.lpc-ng   { background: #fdecea; }
+.lpc-warn { background: #fff6e5; }
+.lpc-info { background: #f2f5fb; }
+.lpc-ok   { font-size: 0.82rem; margin: 0.5rem 0 0; color: #2e7d32; }
+
+/* もしも比較 */
+.lpc-base {
+  font-size: 0.82rem;
+  margin: 0.5rem 0;
+  color: #444;
+}
+.lpc-whatif {
+  border: 1px solid #e6e9f2;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.5rem;
+}
+.lpc-all { background: #f5f8ff; }
+.lpc-cond {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+}
+.lpc-select,
+.lpc-num {
+  font-size: 0.85rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid #ccd3e0;
+  border-radius: 6px;
+  background: #fff;
+}
+.lpc-num { width: 7.5em; text-align: right; }
+.lpc-del {
+  margin-left: auto;
+  border: none;
+  background: none;
+  font-size: 1.1rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0 0.3rem;
+}
+.lpc-now {
+  font-size: 0.72rem;
+  color: #888;
+  margin-top: 0.15rem;
+}
+.lpc-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  font-size: 0.8rem;
+  margin-top: 0.35rem;
+}
+.lpc-diff {
+  font-style: normal;
+  color: #666;
+}
+.lpc-diff.pos { color: #2e7d32; }
+.lpc-diff.neg { color: #c62828; }
+.lpc-add {
+  border: 1px dashed #9fb0d6;
+  background: #fff;
+  color: #003087;
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
