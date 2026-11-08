@@ -150,10 +150,10 @@ export default function AIDiag({ simParams, simVals, simResults }) {
         insurancePolicies: (insRes.masters || []).length,
       })
 
-      setDiagText(json.text)
+      setDiagText(String(json.text || ''))
       setStatus('done')
     } catch (e) {
-      setDiagText(e.message)
+      setDiagText(String(e?.message || e))
       setStatus('error')
     }
   }

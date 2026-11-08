@@ -763,7 +763,8 @@ function callClaudeAPI(diagData) {
     },
     payload: JSON.stringify({
       model: 'claude-sonnet-5',
-      max_tokens: 1500,
+      max_tokens: 8000,
+      output_config: { effort: 'medium' },
       messages: [{ role: 'user', content: prompt }],
     }),
     muteHttpExceptions: true,
@@ -777,7 +778,16 @@ function callClaudeAPI(diagData) {
     throw new Error('Claude API エラー(' + code + '): ' + (result.error && result.error.message ? result.error.message : body))
   }
 
-  return { text: result.content[0].text }
+  // 今のモデルは先頭に thinking ブロックが入るので、text ブロックだけをつなげて返す
+  if (result.stop_reason === 'refusal') {
+    throw new Error('AIが診断を断りました。もう一度お試しください')
+  }
+  const text = (result.content || [])
+    .filter(function(b) { return b.type === 'text' })
+    .map(function(b) { return b.text })
+    .join('')
+  if (!text) throw new Error('AIの応答が空でした（' + result.stop_reason + '）')
+  return { text: text }
 }
 
 function buildDiagPrompt(d) {
