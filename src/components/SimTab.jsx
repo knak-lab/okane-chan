@@ -731,14 +731,48 @@ export default function SimTab() {
         )}
       </div>
 
-      {/* パラメータ設定 */}
+      {/* 資産推移グラフ */}
       <div className="sim-section">
-        <h3 className="sim-section-title">
+        <h3 className="sim-section-title">資産推移グラフ</h3>
+        <div className="sim-chart-wrap">
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
+              <XAxis dataKey="age" tickFormatter={v => `${v}歳`} tick={{ fontSize: 11 }}
+                interval="preserveStartEnd" />
+              <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={52} />
+              <Tooltip content={<CustomTooltip />} />
+              <ReferenceLine x={retireAge} stroke="#003087" strokeDasharray="5 3"
+                label={{ value: `退職 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
+              {pensionStartAge !== retireAge && (
+                <ReferenceLine x={pensionStartAge} stroke="#F47920" strokeDasharray="4 4"
+                  label={{ value: `年金開始 ${pensionStartAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#F47920' }} />
+              )}
+              {zeroAge && (
+                <ReferenceLine x={zeroAge} stroke="#e74c3c" strokeDasharray="5 3"
+                  label={{ value: `枯渇 ${zeroAge}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
+              )}
+              <Line type="monotone" dataKey="assets" stroke="#F47920" strokeWidth={2.5} dot={false} name="資産" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* LPチェック（AIなし） */}
+      <LPCheck checks={checks} results={whatIfResults} simParams={simParams} events={events}
+        whatIfs={whatIfs} setWhatIfs={setWhatIfs} />
+
+      {/* AI相談 */}
+      <AIChat context={aiContext} />
+
+      {/* パラメータ設定 */}
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">
           パラメータ設定
           {settingsStatus !== 'idle' && (
             <span className="sim-section-note">{SETTINGS_STATUS_LABEL[settingsStatus]}</span>
           )}
-        </h3>
+        </summary>
         <div className="sim-fields">
           {[
             { label: '現在年齢',     key: 'currentAge',     unit: '歳' },
@@ -780,14 +814,14 @@ export default function SimTab() {
             </div>
           </label>
         </div>
-      </div>
+      </details>
 
       {/* 妻の収入 */}
-      <div className="sim-section">
-        <h3 className="sim-section-title">
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">
           妻の手取り年収
           <span className="sim-section-note">末っ子の成長に合わせて上乗せ（子どもがいない・生まれる前は全額）</span>
-        </h3>
+        </summary>
         <div className="sim-events">
           <div className="sim-event-body">
             <EventNumField label="基本" unit="円 / 年" wide
@@ -812,14 +846,14 @@ export default function SimTab() {
             </p>
           </div>
         </div>
-      </div>
+      </details>
 
       {/* 取得データ */}
-      <div className="sim-section">
-        <h3 className="sim-section-title">
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">
           取得データ
           <span className="sim-section-note">手動で変更可</span>
-        </h3>
+        </summary>
         <div className="sim-fields">
           {[
             { label: '預金',            key: 'cashAssets',        unit: '円',       note: '預金金利で増える' },
@@ -845,11 +879,11 @@ export default function SimTab() {
             </label>
           ))}
         </div>
-      </div>
+      </details>
 
       {/* ライフイベント */}
-      <div className="sim-section">
-        <h3 className="sim-section-title">ライフイベント</h3>
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">ライフイベント</summary>
         <div className="sim-events">
           <ChildEvent label="👶 子供1" state={child1} onChange={setChild1} />
           <ChildEvent label="👶 子供2" state={child2} onChange={setChild2} />
@@ -980,38 +1014,11 @@ export default function SimTab() {
             )}
           </div>
         </div>
-      </div>
-
-      {/* 資産推移グラフ */}
-      <div className="sim-section">
-        <h3 className="sim-section-title">資産推移グラフ</h3>
-        <div className="sim-chart-wrap">
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
-              <XAxis dataKey="age" tickFormatter={v => `${v}歳`} tick={{ fontSize: 11 }}
-                interval="preserveStartEnd" />
-              <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={52} />
-              <Tooltip content={<CustomTooltip />} />
-              <ReferenceLine x={retireAge} stroke="#003087" strokeDasharray="5 3"
-                label={{ value: `退職 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
-              {pensionStartAge !== retireAge && (
-                <ReferenceLine x={pensionStartAge} stroke="#F47920" strokeDasharray="4 4"
-                  label={{ value: `年金開始 ${pensionStartAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#F47920' }} />
-              )}
-              {zeroAge && (
-                <ReferenceLine x={zeroAge} stroke="#e74c3c" strokeDasharray="5 3"
-                  label={{ value: `枯渇 ${zeroAge}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
-              )}
-              <Line type="monotone" dataKey="assets" stroke="#F47920" strokeWidth={2.5} dot={false} name="資産" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      </details>
 
       {/* 老後資金チェック */}
-      <div className="sim-section">
-        <h3 className="sim-section-title">老後資金チェック</h3>
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">老後資金チェック</summary>
         <div className="sim-check-grid">
           <SumCard
             label="今年の家計の収支（退職前）"
@@ -1068,14 +1075,7 @@ export default function SimTab() {
               pos />
           )}
         </div>
-      </div>
-
-      {/* LPチェック（AIなし・常に表示） */}
-      <LPCheck checks={checks} results={whatIfResults} simParams={simParams} events={events}
-        whatIfs={whatIfs} setWhatIfs={setWhatIfs} />
-
-      {/* AI相談 */}
-      <AIChat context={aiContext} />
+      </details>
 
     </div>
   )

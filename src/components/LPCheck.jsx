@@ -91,24 +91,19 @@ export default function LPCheck({ checks, results, simParams, events, whatIfs, s
   }
 
   return (
-    <div className="sim-section lpc">
-      <h3 className="sim-section-title">
-        📊 LPチェック
+    <details className="sim-section sim-collapse lpc">
+      <summary className="sim-section-title">
+        📊 LPチェック {countBadge([...plan, ...data])}
         <span className="sim-section-note">入力を変えるとすぐ反映（AIは使いません）</span>
-      </h3>
+      </summary>
 
       <details className="lpc-block" open>
-        <summary>① データの過不足 {countBadge(data)}</summary>
-        <CheckList items={data} okText="気になる点なし" />
-      </details>
-
-      <details className="lpc-block" open>
-        <summary>② プランのリスク {countBadge(plan)}</summary>
+        <summary>① プランのリスク {countBadge(plan)}</summary>
         <CheckList items={plan} okText="大きなリスクなし" />
       </details>
 
       <div className="lpc-block">
-        <div className="lpc-block-title">③ もしも比較</div>
+        <div className="lpc-block-title">② もしも比較</div>
         <p className="lpc-base">
           今のプラン：<strong>{zeroText(base, simParams.endAge)}</strong>
           ／ 退職直前 {manSign(base.retireAssets)} ／ {simParams.endAge}歳時点 {manSign(base.endAssets)}
@@ -146,6 +141,11 @@ export default function LPCheck({ checks, results, simParams, events, whatIfs, s
 
         <button className="lpc-add" onClick={addRow}>＋ 条件を追加</button>
       </div>
-    </div>
+
+      <details className="lpc-block" open>
+        <summary>③ データの過不足 {countBadge(data)}</summary>
+        <CheckList items={data} okText="気になる点なし" />
+      </details>
+    </details>
   )
 }
