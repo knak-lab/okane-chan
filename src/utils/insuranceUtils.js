@@ -69,31 +69,38 @@ export function calcCumulativeJPY(payments, currentRate) {
   }, 0)
 }
 
+// 解約年度は「何年目」（1, 2, …）でも「西暦」（2046, 2047, …）でも入力できる。1900以上なら西暦とみなす
+export const isCalendarYear = (y) => Number(y) >= 1900
+export const surrenderYearLabel = (y) => (isCalendarYear(y) ? `${y}年` : `${y}年目`)
+
 // 指定の年齢で解約したときの一括返戻金（USD）を、保険simuと同じ解約返戻金表（解約年度ごとの一括額）から求める。
-// 解約年度 = 受け取る年 − 開始年（何年目の終わりか）。表にその年度がなければ前後の年度から直線で補間し、
-// 表の範囲外なら一番近い年度の値を使う。
-// 戻り値: [{ name, policyYear, usd, method: 'exact' | 'interp' | 'nearest' }]
+// 受け取る年（西暦）にそろえて表を引く。「何年目」の行は 開始年 ＋ 年目 で西暦に直す（開始年月が必要）。
+// 表にその年がなければ前後の年から直線で補間し、表の範囲外なら一番近い年の値を使う。
+// 戻り値: [{ name, receiveYear, usd, method: 'exact' | 'interp' | 'nearest' | 'none' | 'nostart', from: [西暦…] }]
 export function surrenderAtAge({ masters = [], surrenderValues = [] }, age, currentAge, thisYear = new Date().getFullYear()) {
   const receiveYear = thisYear + (age - currentAge)
   return masters.map(m => {
     const name = m['保険名']
-    const startYear = parseInt(String(m['開始年月'] || '').split('/')[0]) || thisYear
-    const policyYear = receiveYear - startYear
-    const svs = surrenderValues
+    const startYear = parseInt(String(m['開始年月'] || '').split(/[/-]/)[0]) || null
+    const rows = surrenderValues
       .filter(s => s['保険名'] === name)
-      .map(s => ({ year: parseFloat(s['解約年度']) || 0, usd: parseFloat(s['一括額(USD)']) || 0 }))
-      .filter(s => s.usd > 0)
-      .sort((a, b) => a.year - b.year)
-    if (!svs.length) return { name, policyYear, usd: 0, method: 'none' }
-    const exact = svs.find(s => s.year === policyYear)
-    if (exact) return { name, policyYear, usd: exact.usd, method: 'exact' }
-    const lo = [...svs].reverse().find(s => s.year < policyYear)
-    const hi = svs.find(s => s.year > policyYear)
+      .map(s => ({ year: parseFloat(s['解約年度']) || 0, usd: parseFloat(String(s['一括額(USD)']).replace(/[,$\s]/g, '')) || 0 }))
+      .filter(s => s.usd > 0 && s.year > 0)
+    if (!rows.length) return { name, receiveYear, usd: 0, method: 'none' }
+    const svs = rows
+      .map(s => ({ cal: isCalendarYear(s.year) ? s.year : (startYear ? startYear + s.year : null), usd: s.usd }))
+      .filter(s => s.cal != null)
+      .sort((a, b) => a.cal - b.cal)
+    if (!svs.length) return { name, receiveYear, usd: 0, method: 'nostart' }
+    const exact = svs.find(s => s.cal === receiveYear)
+    if (exact) return { name, receiveYear, usd: exact.usd, method: 'exact' }
+    const lo = [...svs].reverse().find(s => s.cal < receiveYear)
+    const hi = svs.find(s => s.cal > receiveYear)
     if (lo && hi) {
-      const usd = lo.usd + (hi.usd - lo.usd) * (policyYear - lo.year) / (hi.year - lo.year)
-      return { name, policyYear, usd, method: 'interp', from: [lo.year, hi.year] }
+      const usd = lo.usd + (hi.usd - lo.usd) * (receiveYear - lo.cal) / (hi.cal - lo.cal)
+      return { name, receiveYear, usd, method: 'interp', from: [lo.cal, hi.cal] }
     }
     const near = lo || hi
-    return { name, policyYear, usd: near.usd, method: 'nearest', from: [near.year] }
+    return { name, receiveYear, usd: near.usd, method: 'nearest', from: [near.cal] }
   })
 }

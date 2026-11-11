@@ -69,7 +69,7 @@ function SurrenderSection({ ins, onChange }) {
           <tbody>
             {ins.surrenderValues.map(s => (
               <tr key={s.id}>
-                <td><input className="ins-cell-input" type="number" value={s.year}              onChange={e => updRow(s.id, 'year',              e.target.value)} placeholder="1" /></td>
+                <td><input className="ins-cell-input" type="number" value={s.year}              onChange={e => updRow(s.id, 'year',              e.target.value)} placeholder="何年目 or 西暦" /></td>
                 <td><input className="ins-cell-input" type="number" value={s.lumpSumUSD}        onChange={e => updRow(s.id, 'lumpSumUSD',        e.target.value)} placeholder="0" /></td>
                 <td><input className="ins-cell-input" type="number" value={s.installmentYears}  onChange={e => updRow(s.id, 'installmentYears',  e.target.value)} placeholder="10" /></td>
                 <td><input className="ins-cell-input" type="number" value={s.installmentAmtUSD} onChange={e => updRow(s.id, 'installmentAmtUSD', e.target.value)} placeholder="0" /></td>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { gasApi, isGasReady } from '../utils/gasApi'
-import { fromGas, calcCumulativeJPY } from '../utils/insuranceUtils'
+import { fromGas, calcCumulativeJPY, surrenderYearLabel } from '../utils/insuranceUtils'
 import './InsuranceSimulator.css'
 
 const fmt    = (v) => v === 0 ? '¥0' : `¥${Math.round(v).toLocaleString()}`
@@ -52,7 +52,7 @@ function SimCard({ ins, rate }) {
                 const hasInst    = instAmt > 0 && instYrs > 0
                 return (
                   <tr key={s.id}>
-                    <td className="sim-year">{s.year ? `${s.year}年目` : '—'}</td>
+                    <td className="sim-year">{s.year ? surrenderYearLabel(s.year) : '—'}</td>
                     <td className="r sim-usd">{fmtUSD(lumpUSD)}</td>
                     <td className="r sim-jpy">{rate ? fmt(lumpJPY) : '—'}</td>
                     <td className={`r sim-pl ${plLump >= 0 ? 'sim-pl--pos' : 'sim-pl--neg'}`}>
