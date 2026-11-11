@@ -884,7 +884,9 @@ function buildLPContext(d) {
     '# 企業型DC\n' + detail(dm.dc) + '\n\n' +
     '# ライフイベント\n' + eventLines + '\n\n' +
     '# シミュレーション結果\n' +
-    '- 今の年間収支（手取り−生活費−投信積立） ' + yen(r.annualSurplusNow) + '\n' +
+    '- 今年の家計の収支（手取り−生活費。積立は含まない） ' + yen(r.householdNow) +
+      ' / 投信積立 ' + yen(r.fundInvestAnnual) + '/年 / 預金の増減（家計の収支−投信積立） ' + yen(r.annualSurplusNow) +
+      (r.wifeBeforeBirth ? '（妻の手取りは子どもが生まれる前なので0円で計算）' : '') + '\n' +
     '- 月の生活費（家賃・ときめき込み） ' + yen(r.monthlyLiving) + '\n' +
     '- 退職後の月の生活費（今の物価）: 生活費 ' + yen(r.retireLivingBase) + ' ＋ 住居費 ' + yen(r.retireHousing) +
       '（家賃 ' + yen(r.retireRent) + '・維持費 ' + yen(r.retireHomeCost) + '・ローン返済 ' + yen(r.retireLoan) + '）\n' +

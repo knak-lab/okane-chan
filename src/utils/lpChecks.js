@@ -96,7 +96,13 @@ export function planChecks(lp) {
 
   if (r.zeroAge) add('ng', `資産が${r.zeroAge}歳で尽きる（想定寿命 ${p.lifeExpectancy}歳）`)
 
-  if (r.annualSurplusNow < 0) add('warn', `今の年間収支が赤字（${yen(r.annualSurplusNow)}/年）。預金を取り崩している`)
+  const incomeBreakdown = `手取り あなた ${yen(v.myIncome)} ＋ 妻 ${yen(r.wifeIncomeNow)} − 生活費 ${yen(r.monthlyLiving * 12)}`
+  const wifeNote = r.wifeBeforeBirth ? '。妻の手取りは子どもが生まれる前なので0円で計算' : ''
+  if (r.householdNow < 0) {
+    add('warn', `今年の家計が赤字（▲${yen(r.householdNow)}/年：${incomeBreakdown}）${wifeNote}`)
+  } else if (r.annualSurplusNow < 0) {
+    add('info', `家計は黒字（+${yen(r.householdNow)}/年）だが、投信積立 ${yen(r.fundInvestAnnual)}/年 の方が多く、預金は年 ▲${yen(r.annualSurplusNow)} 減る（積立分は投資に移るだけで、資産全体は減らない）${wifeNote}`)
+  }
 
   if (r.monthlyShortfall > 0) {
     const parts = [['生活費', r.retireLivingBase], ['住居費', r.retireHousing]].sort((a, b) => b[1] - a[1])

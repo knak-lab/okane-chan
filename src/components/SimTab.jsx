@@ -651,8 +651,14 @@ export default function SimTab() {
   const zeroAge          = findZeroAge(sim)
   // 月の生活費＝安心＋彩り＋家賃＋ときめき＋冒険の月割り
   const monthlyLiving    = monthlyExpense + params.monthlyRent + vals.yutoriAnnual / 12
-  const annualSurplusNow = vals.myIncome + wifeIncomeAt(wife, [child1, child2], 0)
-    - monthlyLiving * 12 - vals.monthlyFundInvest * 12
+  const wifeIncomeNow    = wifeIncomeAt(wife, [child1, child2], 0)
+  // 家計の収支（積立は使ったお金ではないので引かない）と、預金の増減（投信積立の分だけ預金から投資へ移る）
+  const householdNow     = vals.myIncome + wifeIncomeNow - monthlyLiving * 12
+  const fundInvestAnnual = vals.monthlyFundInvest * 12
+  const annualSurplusNow = householdNow - fundInvestAnnual
+  // 子どもが生まれる前は、妻の手取りを0円として計算している
+  const wifeBeforeBirth  = [child1, child2].some(c => c.enabled) &&
+    Math.max(...[child1, child2].filter(c => c.enabled).map(c => Number(c.currentAge))) < 0
   const totalPension     = pensionMonthly + params.wifePensionMonthly
   // 退職後の住居費（今の物価・月額）。シミュレーションと同じく、マイホーム購入後は家賃を止めて維持費とローン返済を入れる
   const retireT          = retireAge - params.currentAge
@@ -679,8 +685,8 @@ export default function SimTab() {
     results: {
       retireAssets, zeroAge, monthlyShortfall, requiredExtra,
       retireLivingBase, retireHousing, retireRent, retireHomeCost, retireLoan, homeLoanEndAge, shortfallAfterLoan,
-      annualSurplusNow, totalPension, retireLiving, monthlyLiving,
-      wifeIncomeNow: wifeIncomeAt(wife, [child1, child2], 0),
+      annualSurplusNow, householdNow, fundInvestAnnual, wifeBeforeBirth,
+      totalPension, retireLiving, monthlyLiving, wifeIncomeNow,
       // 5歳刻み＋退職・年金開始・最終年の資産推移
       milestones: sim.filter(d =>
         d.age % 5 === 0 || d.age === retireAge || d.age === pensionStartAge || d.age === lifeExpectancy),
@@ -1011,10 +1017,13 @@ export default function SimTab() {
         <h3 className="sim-section-title">老後資金チェック</h3>
         <div className="sim-check-grid">
           <SumCard
-            label="今年の年間収支（退職前）"
-            value={fmtSign(annualSurplusNow)}
-            sub="手取り（本人＋妻）− 生活費 − 投信積立"
-            pos={annualSurplusNow > 0} neg={annualSurplusNow <= 0} />
+            label="今年の家計の収支（退職前）"
+            value={fmtSign(householdNow)}
+            sub={`手取り あなた ${fmt(vals.myIncome)} ＋ 妻 ${fmt(wifeIncomeNow)}${wifeBeforeBirth ? '（出産前は0円）' : ''} − 生活費 ${fmt(monthlyLiving * 12)}。` +
+              (fundInvestAnnual
+                ? `投信積立 ${fmt(fundInvestAnnual)} を引くと、預金は年 ${annualSurplusNow < 0 ? '▲' : '+'}${fmt(annualSurplusNow)}（積立分は投資に移るだけ）`
+                : '')}
+            pos={householdNow > 0} neg={householdNow <= 0} />
           <SumCard
             label="退職時の総資産予測"
             value={fmtSign(retireAssets)}
