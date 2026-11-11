@@ -70,7 +70,12 @@ export default function AIChat({ context }) {
   const [error, setError]     = useState('')
   const bottomRef = useRef(null)
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) }, [conv, pending])
+  // 質問を送った・答えが届いたときだけ下へスクロールする（開いた直後や起動時には動かさない）
+  const firstRender = useRef(true)
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return }
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [conv, pending])
 
   const save = (c) => {
     setConv(c)
@@ -118,12 +123,13 @@ export default function AIChat({ context }) {
   const total = messages.reduce((s, m) => s + (m.cost || 0), 0)
 
   return (
-    <div className="aic">
+    <details className="aic sim-collapse">
+      <summary className="sim-section-title">
+        💬 AI相談
+        <span className="sim-section-note">{messages.length ? `相談中（${messages.filter(m => m.role === 'user').length}問）` : '1質問あたり数円が目安'}</span>
+      </summary>
       <div className="aic-head">
-        <div>
-          <h3 className="aic-title">💬 AI相談</h3>
-          <p className="aic-desc">LPタブの数字とチェック結果を知ったうえで答えます。1質問あたり数円が目安。</p>
-        </div>
+        <p className="aic-desc">LPタブの数字とチェック結果を知ったうえで答えます。</p>
         {messages.length > 0 && <button className="aic-reset" onClick={reset}>新しい相談</button>}
       </div>
 
@@ -172,6 +178,6 @@ export default function AIChat({ context }) {
         <button className="aic-send" type="submit" disabled={!input.trim() || !!pending}>送信</button>
       </form>
       {messages.length > 0 && <div className="aic-total">この相談の合計 約{fmtYen(total)}（目安）</div>}
-    </div>
+    </details>
   )
 }

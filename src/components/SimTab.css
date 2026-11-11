@@ -315,3 +315,28 @@
   color: #aaa;
   line-height: 1.3;
 }
+
+/* ─── 開閉式のセクション ─── */
+.sim-collapse > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  flex-wrap: wrap;           /* 狭い画面では見出しを折らずに、注記を次の行へ回す */
+  column-gap: 0.4rem;
+  row-gap: 0.15rem;
+}
+.sim-collapse > summary::-webkit-details-marker { display: none; }
+.sim-collapse > summary::before {
+  content: '▶';
+  font-size: 0.65rem;
+  color: #F47920;
+  margin-right: 0.15rem;
+  transition: transform 0.15s;
+  align-self: center;
+}
+.sim-collapse[open] > summary::before { transform: rotate(90deg); }
+.sim-collapse:not([open]) > summary {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
