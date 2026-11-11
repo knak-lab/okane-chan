@@ -68,3 +68,32 @@ export function calcCumulativeJPY(payments, currentRate) {
     return sum + usd * r
   }, 0)
 }
+
+// 指定の年齢で解約したときの一括返戻金（USD）を、保険simuと同じ解約返戻金表（解約年度ごとの一括額）から求める。
+// 解約年度 = 受け取る年 − 開始年（何年目の終わりか）。表にその年度がなければ前後の年度から直線で補間し、
+// 表の範囲外なら一番近い年度の値を使う。
+// 戻り値: [{ name, policyYear, usd, method: 'exact' | 'interp' | 'nearest' }]
+export function surrenderAtAge({ masters = [], surrenderValues = [] }, age, currentAge, thisYear = new Date().getFullYear()) {
+  const receiveYear = thisYear + (age - currentAge)
+  return masters.map(m => {
+    const name = m['保険名']
+    const startYear = parseInt(String(m['開始年月'] || '').split('/')[0]) || thisYear
+    const policyYear = receiveYear - startYear
+    const svs = surrenderValues
+      .filter(s => s['保険名'] === name)
+      .map(s => ({ year: parseFloat(s['解約年度']) || 0, usd: parseFloat(s['一括額(USD)']) || 0 }))
+      .filter(s => s.usd > 0)
+      .sort((a, b) => a.year - b.year)
+    if (!svs.length) return { name, policyYear, usd: 0, method: 'none' }
+    const exact = svs.find(s => s.year === policyYear)
+    if (exact) return { name, policyYear, usd: exact.usd, method: 'exact' }
+    const lo = [...svs].reverse().find(s => s.year < policyYear)
+    const hi = svs.find(s => s.year > policyYear)
+    if (lo && hi) {
+      const usd = lo.usd + (hi.usd - lo.usd) * (policyYear - lo.year) / (hi.year - lo.year)
+      return { name, policyYear, usd, method: 'interp', from: [lo.year, hi.year] }
+    }
+    const near = lo || hi
+    return { name, policyYear, usd: near.usd, method: 'nearest', from: [near.year] }
+  })
+}

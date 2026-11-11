@@ -73,6 +73,11 @@ export function dataChecks(lp) {
 
   // 保険
   if (dm.insurancePolicies && !v.insuranceReturn) add('warn', '保険はあるが返戻予定額が0円（解約返戻金テーブル未入力？）')
+  for (const d of dm.insurance || []) {
+    if (d.method === 'none') add('warn', `保険「${d.name}」の解約返戻金表がない（保険simuで入力）`)
+    else if (d.method === 'interp') add('info', `保険「${d.name}」は${p.insuranceAge}歳（${d.policyYear}年目）の返戻金が表になく、${d.from[0]}年目と${d.from[1]}年目から推計`)
+    else if (d.method === 'nearest') add('warn', `保険「${d.name}」は${p.insuranceAge}歳（${d.policyYear}年目）が表の範囲外のため、${d.from[0]}年目の値で代用`)
+  }
   if (dm.usdJpyFallback && v.insuranceReturn) add('warn', '為替レートが取得できず USD/JPY=150 の仮値で換算')
 
   // ライフイベント
@@ -125,8 +130,8 @@ export function planChecks(lp) {
   const low = (r.series || []).find(d => d.age < p.retireAge && d.cash < living6)
   if (low && living6 > 0) add('warn', `${low.age}歳で預金が ${yen(low.cash)} になり、生活費${EMERGENCY_MONTHS}か月分（${yen(living6)}）を下回る`)
 
-  if (v.insuranceReturn && r.retireAssets > 0 && v.insuranceReturn / r.retireAssets >= 0.3)
-    add('info', `退職時資産の${Math.round(v.insuranceReturn / r.retireAssets * 100)}%が保険返戻金（${yen(v.insuranceReturn)}）。為替で大きく動く`)
+  if (v.insuranceReturn && Number(p.insuranceAge) <= p.retireAge && r.retireAssets > 0 && v.insuranceReturn / r.retireAssets >= 0.3)
+    add('info', `退職直前の資産の${Math.round(v.insuranceReturn / r.retireAssets * 100)}%が、${p.insuranceAge}歳で受け取る保険返戻金（${yen(v.insuranceReturn)}）。為替で大きく動く`)
 
   return out
 }

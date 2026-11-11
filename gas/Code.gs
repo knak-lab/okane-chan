@@ -878,7 +878,10 @@ function buildLPContext(d) {
     '- 生活費（安心＋彩り） ' + yen(v.monthlyExpense) + '/月（' + (notes.expense || '') + '）\n' +
     '- ときめき＋冒険 ' + yen(v.yutoriAnnual) + '/年（' + (notes.yutori || '') + '）\n' +
     '- あなたの年金 ' + yen(v.pensionMonthly) + '/月（確認 ' + (dm.pensionYearMonth || '不明') + '）\n' +
-    '- 保険返戻予定 ' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件、退職年に一括）\n\n' +
+    '- 外貨保険の返戻予定 ' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件、' + p.insuranceAge + '歳で解約して一括。今の為替で円換算）\n' +
+    lines((dm.insurance || []).map(function(x) {
+      return '  ' + x.name + ': ' + x.policyYear + '年目 ' + yen(x.jpy) + '（' + ({ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値', none: '表なし' }[x.method] || '') + '）'
+    }), '') + '\n\n' +
     '# 口座別残高\n' + detail(dm.assets) + '\n\n' +
     '# 投資信託\n' + detail(dm.funds) + '\n\n' +
     '# 企業型DC\n' + detail(dm.dc) + '\n\n' +

@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
+import { surrenderAtAge } from '../utils/insuranceUtils'
 import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
@@ -120,7 +121,7 @@ function wifeIncomeAt(wife, children, t) {
 // AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
-  '退職金はパラメータの「退職金（手取り）」を退職年に一括加算（企業年金の年金払いは入っていない）。保険返戻金も退職年に一括加算',
+  '退職金はパラメータの「退職金（手取り）」を退職年に一括加算（企業年金の年金払いは入っていない）。外貨保険は「保険の受け取り年齢」で解約して一括で受け取る（保険simuの解約返戻金表、今の為替レートで円換算。税金は考慮していない）',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）。DCも退職前に取り崩せる扱い',
@@ -137,7 +138,7 @@ function runSim(p, events) {
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn, retirementBonus = 0, retireExpenseRate = 100 } = p
+          insuranceReturn, insuranceAge = retireAge, retirementBonus = 0, retireExpenseRate = 100 } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -213,8 +214,9 @@ function runSim(p, events) {
       }
     }
 
-    // 退職時に保険返戻金と退職金を一括加算
-    const lump = age === retireAge ? (insuranceReturn > 0 ? insuranceReturn : 0) + (Number(retirementBonus) || 0) : 0
+    // 保険返戻金は受け取り年齢で、退職金は退職時に一括加算
+    const lump = (age === Number(insuranceAge) && insuranceReturn > 0 ? insuranceReturn : 0)
+      + (age === retireAge ? Number(retirementBonus) || 0 : 0)
 
     invest += Math.max(0, invest) * rInvest + fundInvest + dcInvest + extra
     cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost + lump
@@ -360,6 +362,7 @@ export default function SimTab() {
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
     retirementBonus: 0,     // 退職金（手取り・退職年に一括）
+    insuranceAge:    60,    // 外貨保険を解約して受け取る年齢
   })
 
   const [vals, setVals] = useState({
@@ -380,6 +383,16 @@ export default function SimTab() {
   const [loadStatus, setLoadStatus] = useState('idle')
   // AI診断で「データの過不足」を判断するための取得状況
   const [dataMeta,   setDataMeta]   = useState({})
+  // 外貨保険の解約返戻金表と為替（取得データ）。受け取り年齢が変わるたびに返戻予定額を計算し直す
+  const [insData,    setInsData]    = useState(null)
+  const [insDetail,  setInsDetail]  = useState([])
+  useEffect(() => {
+    if (!insData) return
+    const detail = surrenderAtAge(insData, Number(params.insuranceAge), params.currentAge)
+    const usd = detail.reduce((t, d) => t + d.usd, 0)
+    setInsDetail(detail.map(d => ({ ...d, jpy: Math.round(d.usd * insData.usdJpy) })))
+    setVals(v => ({ ...v, insuranceReturn: Math.round(usd * insData.usdJpy) }))
+  }, [insData, params.insuranceAge, params.currentAge])
   const [loadMsg,    setLoadMsg]    = useState('')
 
   // 妻の手取り年収：基本額＋末っ子が各年齢に達したら上乗せ
@@ -525,29 +538,11 @@ export default function SimTab() {
         .sort((a, b) => b['確認年月'].localeCompare(a['確認年月']))
       const pensionMonthly = parseAmt(pRecs[0]?.['受給見込み額(月額)'])
 
-      // 保険返戻予定額: 退職年度に最近接の解約年度の一括額(USD) × USD/JPY
+      // 外貨保険: 解約返戻金表と為替を取っておき、返戻予定額は「保険の受け取り年齢」から下の useEffect で計算する
       const usdJpy = rateRes?.rates?.JPY || 150
       const currentAgeNow = new Date().getFullYear() - BIRTH_YEAR
-      const policyYearsToRetire = params.retireAge - currentAgeNow
       const { masters: insMasters = [], surrenderValues: svRows = [] } = insRes || {}
-      let totalInsUSD = 0
-      insMasters.forEach(m => {
-        const insName = m['保険名']
-        const startYear = parseInt((m['開始年月'] || '').split('/')[0]) || new Date().getFullYear()
-        const policyYearAtRetire = (new Date().getFullYear() + policyYearsToRetire) - startYear
-        const svs = svRows
-          .filter(s => s['保険名'] === insName)
-          .map(s => ({ year: parseFloat(s['解約年度']) || 0, usd: parseFloat(s['一括額(USD)']) || 0 }))
-          .filter(s => s.usd > 0)
-          .sort((a, b) => a.year - b.year)
-        if (!svs.length) return
-        let best = svs[0]
-        for (const s of svs) {
-          if (Math.abs(s.year - policyYearAtRetire) < Math.abs(best.year - policyYearAtRetire)) best = s
-        }
-        totalInsUSD += best.usd
-      })
-      const insuranceReturn = Math.round(totalInsUSD * usdJpy)
+      setInsData({ masters: insMasters, surrenderValues: svRows, usdJpy })
 
       // 鮮度チェック用の明細（口座・投信・DCごとに、金額が入っている最新の月）
       const latestNonBlank = (recs, monthKey, valueKey) => [...recs]
@@ -572,7 +567,6 @@ export default function SimTab() {
         hasAnnualPlan: Boolean(plan),
         pensionYearMonth: pRecs[0]?.['確認年月'] || '',
         insurancePolicies: insMasters.length,
-        insuranceUSD: totalInsUSD,
         usdJpy,
         usdJpyFallback: !rateRes?.rates?.JPY,
       })
@@ -584,7 +578,7 @@ export default function SimTab() {
         myIncome,
         monthlyFundInvest: monthlyFunds,
         monthlyDCInvest: monthlyDC,
-        monthlyExpense, yutoriAnnual, pensionMonthly, insuranceReturn,
+        monthlyExpense, yutoriAnnual, pensionMonthly,
       }))
       setLoadStatus('done')
       setLoadMsg('データを取得しました（各項目は手動で上書き可能です）')
@@ -621,6 +615,7 @@ export default function SimTab() {
     monthlyRent:     params.monthlyRent,
     pensionMonthly:  vals.pensionMonthly,
     insuranceReturn: vals.insuranceReturn,
+    insuranceAge:    params.insuranceAge,
     retireExpenseRate: params.retireExpenseRate,
     retirementBonus: params.retirementBonus,
   }), [params, vals, wife])
@@ -679,7 +674,8 @@ export default function SimTab() {
 
   // LPチェック・AIに渡すLPタブの中身
   const lp = {
-    params, vals, wife, dataMeta, assumptions: MODEL_ASSUMPTIONS,
+    params, vals, wife, assumptions: MODEL_ASSUMPTIONS,
+    dataMeta: { ...dataMeta, insurance: insDetail },
     notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
     events: { child1, child2, car, dog, home: homeEff, homestLinked },
     results: {
@@ -757,6 +753,7 @@ export default function SimTab() {
             { label: '妻の年金開始年齢', key: 'wifePensionStartAge', unit: '歳（妻の年齢）' },
             { label: '退職後の生活費',   key: 'retireExpenseRate', unit: '%', note: '現役時に対する割合。家賃は対象外' },
             { label: '退職金（手取り）', key: 'retirementBonus',   unit: '円', note: '退職年に一括で入る。就業規則・退職金規程で確認' },
+            { label: '保険の受け取り年齢', key: 'insuranceAge',    unit: '歳', note: '外貨保険を解約して一括で受け取る年齢' },
             { label: '家賃',             key: 'monthlyRent',   unit: '円 / 月', note: '老後も払う前提。マイホーム購入後は不要' },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
@@ -833,7 +830,7 @@ export default function SimTab() {
             { label: '生活費（安心＋彩り）', key: 'monthlyExpense', unit: '円 / 月',  note: expenseNote },
             { label: 'ときめき＋冒険',  key: 'yutoriAnnual',      unit: '円 / 年',  note: yutoriNote },
             { label: 'あなたの年金',    key: 'pensionMonthly',    unit: '円 / 月',  note: '年金タブより' },
-            { label: '保険返戻予定額',  key: 'insuranceReturn',   unit: '円（一括）', note: '外貨保険/退職年度USD換算' },
+            { label: '保険返戻予定額',  key: 'insuranceReturn',   unit: '円（一括）', note: `外貨保険を${params.insuranceAge}歳で解約（保険simuの解約返戻金表×今の為替）` },
           ].map(({ label, key, unit, note }) => (
             <label key={key} className="sim-field">
               <span className="sim-field-label">
