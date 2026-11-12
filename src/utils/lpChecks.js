@@ -34,7 +34,7 @@ export function dataChecks(lp) {
 
   // 資産
   if (!v.cashAssets)   add('ng', '預金が0円（資産タブ未入力、または取得失敗）')
-  if (!v.investAssets) add('warn', '投資資産（投信＋DC評価額）が0円')
+  if (!v.dcAssets) add('warn', 'DC（退職金）の評価額が0円（DCの記録が未入力？）')
   for (const a of dm.assets || []) {
     const ago = monthsAgo(a.month)
     if (ago != null && ago >= STALE_MONTHS) add('warn', `口座「${a.name}」の残高が${ago}か月前（${toYM(a.month)}）のまま`)
@@ -65,7 +65,6 @@ export function dataChecks(lp) {
     if (ago != null && ago >= 12) add('warn', `年金見込み額の確認が${Math.floor(ago / 12)}年以上前（${dm.pensionYearMonth}）`)
   }
   if (!p.wifePensionMonthly) add('warn', '妻の年金が0円（ねんきん定期便の見込み額が未入力）')
-  if (!p.retirementBonus) add('warn', '退職金が0円（就業規則・退職金規程で見込み額を確認）')
 
   // 妻の収入
   const stagesAdd = (wife.stages || []).reduce((s, st) => s + (Number(st.add) || 0), 0)
@@ -140,7 +139,8 @@ export function planChecks(lp) {
 // ─── ③ もしも比較 ───────────────────────────────────
 // target: 'p' は runSim の引数（simParams）、'home' はライフイベントのマイホーム
 export const WHATIF_FIELDS = [
-  { key: 'retirementBonus',   label: '退職金（手取り）',     unit: '円',   target: 'p' },
+  { key: 'dcReceiveAge',      label: 'DCを受け取る年齢',     unit: '歳',   target: 'p' },
+  { key: 'monthlyDCInvest',   label: 'DCの掛金',             unit: '円/月', target: 'p' },
   { key: 'retireExpenseRate', label: '退職後の生活費',       unit: '%',    target: 'p' },
   { key: 'retireAge',         label: '退職年齢',             unit: '歳',   target: 'p' },
   { key: 'pensionStartAge',   label: '年金受給開始年齢',     unit: '歳',   target: 'p' },
@@ -180,7 +180,7 @@ export function currentValue(key, simParams, events) {
 }
 
 export const DEFAULT_WHATIFS = [
-  { id: 'w1', key: 'retirementBonus',   value: 10_000_000 },
+  { id: 'w1', key: 'dcReceiveAge',      value: 65 },
   { id: 'w2', key: 'retireExpenseRate', value: 80 },
   { id: 'w3', key: 'loanYears',         value: 25 },
   { id: 'w4', key: 'returnRate',        value: 3 },

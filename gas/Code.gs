@@ -875,10 +875,12 @@ function buildLPContext(d) {
     '- 本人 ' + p.currentAge + '歳 / 退職 ' + p.retireAge + '歳 / 想定寿命 ' + p.lifeExpectancy + '歳 / 年金開始 ' + p.pensionStartAge + '歳\n' +
     '- 妻 ' + p.wifeAge + '歳 / 妻の年金 ' + yen(p.wifePensionMonthly) + '/月（妻' + p.wifePensionStartAge + '歳から）\n' +
     '- 投資利回り ' + p.returnRate + '% / 預金金利 ' + p.cashRate + '% / 物価上昇率 ' + p.inflationRate + '% / 収入の伸び ' + p.incomeGrowth + '%\n' +
-    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '% / 退職金（手取り） ' + yen(p.retirementBonus) + '\n' +
+    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '%\n' +
     workLine('あなた', (lp.work || {}).me) + workLine('妻', (lp.work || {}).wife) + '\n' +
     '# 取得データ\n' +
-    '- 預金 ' + yen(v.cashAssets) + ' / 投資資産（投信＋DC） ' + yen(v.investAssets) + '\n' +
+    '- 預金 ' + yen(v.cashAssets) + ' / 投資信託 ' + yen(v.fundAssets) + '\n' +
+    '- DC（企業型確定拠出年金。これが退職金のすべて） ' + yen(v.dcAssets) + '、掛金 ' + yen(v.monthlyDCInvest) + '/月（定年まで）、' +
+      p.dcReceiveAge + '歳で' + (p.dcMode === 'annuity' ? p.dcYears + '年の年金として' : '一時金で') + '受け取る（それまでは取り崩せない）\n' +
     '- あなたの手取り年収 ' + yen(v.myIncome) + '（' + (notes.income || '') + '）\n' +
     '- 妻の手取り年収: 基本' + yen(w.base) + '/年' + (stageLines ? '、' + stageLines : '') + '（今年 ' + yen(r.wifeIncomeNow) + '）\n' +
     '- 投信積立 ' + yen(v.monthlyFundInvest) + '/月 / DC掛金 ' + yen(v.monthlyDCInvest) + '/月\n' +

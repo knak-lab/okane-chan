@@ -345,3 +345,47 @@
 .sim-work { flex-direction: column; align-items: stretch; }
 .sim-work-row { flex-wrap: wrap; }
 .sim-mini-input--age { width: 3.2em; }
+
+/* ─── 結論（上のカード） ─── */
+.sim-conclusion { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 720px) { .sim-conclusion { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.sim-conclusion .sim-sum-value { font-size: 1.1rem; }
+.sim-conclusion .sim-sum-sub { font-size: 0.68rem; line-height: 1.45; }
+
+/* ─── グラフのツールチップ（系列ごと） ─── */
+.sim-tt-total { font-weight: 700; border-bottom: 1px solid #eee; padding-bottom: 0.2rem; margin-bottom: 0.2rem; }
+.sim-tt-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 0.3rem; vertical-align: middle; }
+
+/* ─── 前提（入力欄） ─── */
+.sim-premise-head {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #57606a;
+  margin: 1.25rem 0.25rem 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+}
+.sim-section-summary { color: #57606a; }
+.sim-subhead {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #003087;
+  margin: 1rem 0 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #e3e6ec;
+}
+.sim-section-foot { margin-top: 0.75rem; }
+.sim-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #2a78d6;
+  background: #eaf2fc;
+  border-radius: 4px;
+  padding: 0 0.3rem;
+  margin-left: 0.3rem;
+  vertical-align: 1px;
+  align-self: flex-start;
+}

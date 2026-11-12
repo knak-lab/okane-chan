@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
 import { surrenderAtAge } from '../utils/insuranceUtils'
@@ -133,18 +133,20 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
   return v
 }
 
-// 資産は「預金」と「投資（投信＋DC）」に分けて別の利回りで増やす。
-// 退職前：手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
-//         DC掛金は給与天引き・会社拠出なので手取りからは引かず、投資に直接入る。
-// 退職後：生活費を預金から払い、年金を受け取る。預金が尽きたら投資を取り崩す。
+// 資産は「預金」「投資（投信）」「DC」に分けて増やす（投信とDCは想定利回り、預金は預金金利）。
+// 手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
+// DC（企業型確定拠出年金）が退職金。掛金は給与天引き・会社拠出なので手取りからは引かず、定年まで DC に入る。
+//   受け取るまでは取り崩せない。受け取り方は一時金（全額を投資へ移す）か年金（何年かに分けて預金へ）。
+// 預金が尽きたら投資を取り崩す。
 // 支出・年金・イベント費用は物価上昇率、収入は収入の伸び率で毎年増やす（ローン返済額は固定）。
 // AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
-  '退職金はパラメータの「退職金（手取り）」を退職年に一括加算（企業年金の年金払いは入っていない）。外貨保険は「保険の受け取り年齢」で解約して一括で受け取る（保険simuの解約返戻金表、今の為替レートで円換算。税金は考慮していない）',
+  '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
+  '外貨保険は「保険の受け取り年齢」で解約して一括で受け取る（保険simuの解約返戻金表、今の為替レートで円換算。税金は考慮していない）',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
-  '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）。DCも退職前に取り崩せる扱い',
+  '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
@@ -155,17 +157,22 @@ const MODEL_ASSUMPTIONS = [
 ]
 
 function runSim(p, events) {
-  const { startAge, endAge, cashAssets, investAssets, retireAge, pensionStartAge,
+  const { startAge, endAge, cashAssets, retireAge, pensionStartAge,
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn, insuranceAge = retireAge, retirementBonus = 0, retireExpenseRate = 100,
+          insuranceReturn, insuranceAge = retireAge, retireExpenseRate = 100,
+          fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
           work = DEFAULT_WORK } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
   let cash   = cashAssets
-  let invest = investAssets
+  let invest = fundAssets
+  let dc     = dcAssets
+  // すでに受取年齢を過ぎていれば、今年受け取る扱い
+  const dcAge = Math.max(Number(dcReceiveAge) || startAge, startAge)
+  let dcPaysLeft = 0
   const data = []
 
   const home = events?.home
@@ -174,7 +181,7 @@ function runSim(p, events) {
     : 0
 
   for (let age = startAge; age <= endAge; age++) {
-    data.push({ age, assets: Math.round(cash + invest), cash: Math.round(cash), invest: Math.round(invest) })
+    data.push({ age, assets: Math.round(cash + invest + dc), cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc) })
 
     const t          = age - startAge
     const infl       = (1 + (inflationRate || 0) / 100) ** t
@@ -237,12 +244,24 @@ function runSim(p, events) {
       }
     }
 
-    // 保険返戻金は受け取り年齢で、退職金は退職時に一括加算
-    const lump = (age === Number(insuranceAge) && insuranceReturn > 0 ? insuranceReturn : 0)
-      + (age === retireAge ? Number(retirementBonus) || 0 : 0)
+    // 保険返戻金は受け取り年齢で一括加算
+    const lump = age === Number(insuranceAge) && insuranceReturn > 0 ? insuranceReturn : 0
 
-    invest += Math.max(0, invest) * rInvest + fundInvest + dcInvest + extra
-    cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost + lump
+    // DC：受け取るまでは運用と掛金（定年まで）で増える。受け取ったら一時金は投資へ、年金は分けて預金へ
+    dc += Math.max(0, dc) * rInvest + (age < dcAge ? dcInvest : 0)
+    let dcPay = 0
+    if (age === dcAge) {
+      if (dcMode === 'annuity') dcPaysLeft = Math.max(1, Number(dcYears) || 1)
+      else { invest += dc; dc = 0 }
+    }
+    if (dcPaysLeft > 0) {
+      dcPay = dc / dcPaysLeft
+      dc -= dcPay
+      dcPaysLeft--
+    }
+
+    invest += Math.max(0, invest) * rInvest + fundInvest + extra
+    cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost + lump + dcPay
     if (cash < 0 && invest > 0) {
       const draw = Math.min(invest, -cash)
       invest -= draw
@@ -381,20 +400,81 @@ function SumCard({ label, value, sub, pos, neg }) {
   )
 }
 
+// 資産推移グラフの系列（色は dataviz の検証済みカテゴリ色。名前は凡例とツールチップに必ず出す）
+const SERIES = [
+  { key: 'cash',   name: '預金',       color: '#2a78d6' },
+  { key: 'invest', name: '投資（投信）', color: '#eb6834' },
+  { key: 'dc',     name: 'DC（退職金）', color: '#1baf7a' },
+]
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
+  const d = payload[0].payload
   return (
     <div className="sim-tooltip">
       <p className="sim-tt-age">{label}歳</p>
-      {payload.map(p => (
-        <p key={p.dataKey} className="sim-tt-row" style={{ color: p.color }}>
-          <span>資産</span>
-          <span>¥{Math.max(0, Math.round(p.value)).toLocaleString()}</span>
+      <p className="sim-tt-row sim-tt-total"><span>合計</span><span>{fmtSign(d.raw.assets)}</span></p>
+      {SERIES.map(s => (
+        <p key={s.key} className="sim-tt-row">
+          <span><i className="sim-tt-dot" style={{ background: s.color }} />{s.name}</span>
+          <span>{fmtSign(d.raw[s.key])}</span>
         </p>
       ))}
     </div>
   )
 }
+
+// 開閉式の欄。閉じていても見出しの右に要点を出す
+function Section({ icon, title, summary, children }) {
+  return (
+    <details className="sim-section sim-collapse">
+      <summary className="sim-section-title">
+        {icon} {title}
+        {summary && <span className="sim-section-note sim-section-summary">{summary}</span>}
+      </summary>
+      {children}
+    </details>
+  )
+}
+
+// 1項目の入力。fetched は「データ再取得」で入る値（手で上書きもできる）
+function Field({ label, note, unit, value, onChange, fetched, wide }) {
+  return (
+    <label className="sim-field">
+      <span className="sim-field-label">
+        {label}
+        {fetched && <span className="sim-badge">取得</span>}
+        {note && <span className="sim-field-note">{note}</span>}
+      </span>
+      <div className="sim-field-row">
+        <NumInput className={`sim-num-input${wide ? ' sim-num-input--wide' : ''}`} value={value} onChange={onChange} />
+        <span className="sim-field-unit">{unit}</span>
+      </div>
+    </label>
+  )
+}
+
+// 選択ボタン（年金の開始年齢、DCの受け取り方など）
+function Choice({ label, note, options, value, onChange }) {
+  return (
+    <div className="sim-field">
+      <span className="sim-field-label">
+        {label}
+        {note && <span className="sim-field-note">{note}</span>}
+      </span>
+      <div className="sim-field-row">
+        {options.map(([v, text]) => (
+          <button key={v} type="button" className={`sim-choice-btn${value === v ? ' active' : ''}`} onClick={() => onChange(v)}>
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const man  = (v) => `${Math.round((Number(v) || 0) / 10_000).toLocaleString()}万`
+const man1 = (v) => `${((Number(v) || 0) / 10_000).toFixed(1)}万`
 
 // ─── メインコンポーネント ──────────────────────────
 export default function SimTab() {
@@ -412,13 +492,16 @@ export default function SimTab() {
     wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
-    retirementBonus: 0,     // 退職金（手取り・退職年に一括）
+    dcReceiveAge:    60,    // DC（退職金）を受け取る年齢
+    dcMode:          'lump', // DCの受け取り方：lump（一時金）| annuity（年金）
+    dcYears:         10,    // 年金で受け取るときの年数
     insuranceAge:    60,    // 外貨保険を解約して受け取る年齢
   })
 
   const [vals, setVals] = useState({
     cashAssets:        0,
-    investAssets:      0,
+    fundAssets:        0,  // 投資信託の評価額
+    dcAssets:          0,  // DC（退職金）の評価額
     myIncome:          0,  // 本人の手取り年収（年間タブの給与＋ボーナス）
     monthlyFundInvest: 0,  // 投信積立（手取りから払う）
     monthlyDCInvest:   0,  // DC掛金（給与天引き・会社拠出）
@@ -481,14 +564,17 @@ export default function SimTab() {
       .then(r => {
         const s = r.data
         if (s) {
-          if (s.params) setParams(p => ({ ...p, ...s.params }))
+          if (s.params) {
+            const { retirementBonus: _old, ...rest } = s.params  // 退職金はDCに一本化したので捨てる
+            setParams(p => ({ ...p, ...rest }))
+          }
           if (s.child1) setChild1(c => ({ ...c, ...s.child1 }))
           if (s.child2) setChild2(c => ({ ...c, ...s.child2 }))
           if (s.car)    setCar(c => ({ ...c, ...s.car }))
           if (s.dog)    setDog(d => ({ ...d, ...s.dog }))
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
           if (s.wife)   setWife(w => ({ ...w, ...s.wife }))
-          if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs)
+          if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs.filter(w => whatIfField(w.key)))
           if (s.work) setWork(w => ({ me: { ...w.me, ...s.work.me }, wife: { ...w.wife, ...s.work.wife } }))
         }
         setSettingsStatus('idle')
@@ -627,7 +713,8 @@ export default function SimTab() {
       setVals(v => ({
         ...v,
         cashAssets: depositAssets,
-        investAssets: totalFunds + totalDC,
+        fundAssets: totalFunds,
+        dcAssets: totalDC,
         myIncome,
         monthlyFundInvest: monthlyFunds,
         monthlyDCInvest: monthlyDC,
@@ -654,7 +741,11 @@ export default function SimTab() {
     cashRate:        params.cashRate,
     inflationRate:   params.inflationRate,
     cashAssets:      vals.cashAssets,
-    investAssets:    vals.investAssets,
+    fundAssets:      vals.fundAssets,
+    dcAssets:        vals.dcAssets,
+    dcReceiveAge:    params.dcReceiveAge,
+    dcMode:          params.dcMode,
+    dcYears:         params.dcYears,
     incomeGrowth:    params.incomeGrowth,
     myIncome:        vals.myIncome,
     wife,
@@ -670,7 +761,6 @@ export default function SimTab() {
     insuranceReturn: vals.insuranceReturn,
     insuranceAge:    params.insuranceAge,
     retireExpenseRate: params.retireExpenseRate,
-    retirementBonus: params.retirementBonus,
     work,
   }), [params, vals, wife, work])
 
@@ -692,8 +782,12 @@ export default function SimTab() {
 
   const requiredExtra = useMemo(() => calcRequiredExtra(simParams, events), [simParams, events])
 
+  // 積み上げは0未満を描かない（預金がマイナスの年は合計の線が積み上げより下に来る）
   const chartData = useMemo(() =>
-    sim.map(d => ({ age: d.age, assets: Math.max(0, d.assets) })),
+    sim.map(d => ({
+      age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), dc: Math.max(0, d.dc),
+      total: Math.max(0, d.assets), raw: d,
+    })),
     [sim])
 
   const retireAssets     = sim.find(d => d.age === retireAge)?.assets ?? 0
@@ -767,7 +861,19 @@ export default function SimTab() {
     },
   }
 
+  const setP = (key) => (v) => setParams(p => ({ ...p, [key]: v }))
+  const setV = (key) => (v) => setVals(p => ({ ...p, [key]: v }))
+  const dcAtRetire = sim.find(d => d.age === retireAge)?.dc ?? 0
+  const lifeEventSummary = [
+    child1.enabled && `子1（${child1.currentAge}歳）`,
+    child2.enabled && `子2（${child2.currentAge}歳）`,
+    car.enabled && '車',
+    dog.enabled && '犬',
+    home.enabled && `家（${home.yearsFromNow}年後）`,
+  ].filter(Boolean).join('・') || 'なし'
+
   // ─── レンダリング ────────────────────────────────
+  // 結論 → 考える（LPチェック・AI相談）→ 前提（話題ごとの入力）の順
   return (
     <div className="sim-tab">
 
@@ -785,29 +891,73 @@ export default function SimTab() {
         )}
       </div>
 
+      {/* 結論 */}
+      <div className="sim-section">
+        <div className="sim-check-grid sim-conclusion">
+          <SumCard
+            label="資産が尽きる年齢"
+            value={zeroAge ? `${zeroAge}歳` : `${lifeExpectancy}歳までもつ ✓`}
+            sub={requiredExtra > 0 ? `定年まで毎月あと${fmt(requiredExtra)}貯めれば${lifeExpectancy}歳までもつ` : 'ライフイベント込み'}
+            pos={!zeroAge} neg={!!zeroAge} />
+          <SumCard
+            label="退職直前の資産"
+            value={fmtSign(retireAssets)}
+            sub={`${retireAge}歳時点（${dcAtRetire > 0 ? `うちDC ${man(dcAtRetire)}` : `DCは${params.dcReceiveAge}歳で受け取り済み`}）`}
+            pos={retireAssets > 0} neg={retireAssets <= 0} />
+          <SumCard
+            label="今年の家計の収支"
+            value={fmtSign(householdNow)}
+            sub={`手取り あなた ${fmt(vals.myIncome)} ＋ 妻 ${fmt(wifeIncomeNow)}${wifeBeforeBirth ? '（出産前は0円）' : ''} − 生活費 ${fmt(monthlyLiving * 12)}。` +
+              (fundInvestAnnual
+                ? `投信積立 ${fmt(fundInvestAnnual)} を引くと、預金は年 ${annualSurplusNow < 0 ? '▲' : '+'}${fmt(annualSurplusNow)}（積立分は投資に移るだけ）`
+                : '')}
+            pos={householdNow > 0} neg={householdNow <= 0} />
+          <SumCard
+            label="退職後の月の不足"
+            value={monthlyShortfall > 0 ? `▲${fmt(monthlyShortfall)}` : '不足なし ✓'}
+            sub={
+              `生活費 ${fmt(retireLivingBase)}（${params.retireExpenseRate}%）＋ 住居費 ${fmt(retireHousing)}` +
+              (homeOn
+                ? `（${retireRent ? `家賃 ${fmt(retireRent)}・` : ''}維持費 ${fmt(retireHomeCost)}${retireLoan ? `・ローン ${fmt(retireLoan)}` : ''}）`
+                : '（家賃）') +
+              ` − 年金 ${fmt(totalPension)}` +
+              (shortfallAfterLoan != null
+                ? `。ローン完済（${homeLoanEndAge}歳）後は ${shortfallAfterLoan > 0 ? fmt(shortfallAfterLoan) : '不足なし'}`
+                : '')
+            }
+            pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
+        </div>
+      </div>
+
       {/* 資産推移グラフ */}
       <div className="sim-section">
-        <h3 className="sim-section-title">資産推移グラフ</h3>
+        <h3 className="sim-section-title">資産推移</h3>
         <div className="sim-chart-wrap">
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 8, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" />
+            <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" vertical={false} />
               <XAxis dataKey="age" tickFormatter={v => `${v}歳`} tick={{ fontSize: 11 }}
                 interval="preserveStartEnd" />
-              <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={52} />
-              <Tooltip content={<CustomTooltip />} />
+              <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 11 }} width={48} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#888', strokeDasharray: '3 3' }} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}
+                formatter={v => <span style={{ color: '#57606a' }}>{v}</span>}
+                payload={[
+                  ...SERIES.map(sr => ({ value: sr.name, type: 'square', color: sr.color, id: sr.key })),
+                  { value: '合計', type: 'line', color: '#1f2328', id: 'total' },
+                ]} />
+              {SERIES.map(sr => (
+                <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.name} stackId="assets"
+                  fill={sr.color} fillOpacity={0.8} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
+              ))}
+              <Line type="monotone" dataKey="total" name="合計" stroke="#1f2328" strokeWidth={2} dot={false} isAnimationActive={false} />
               <ReferenceLine x={retireAge} stroke="#003087" strokeDasharray="5 3"
-                label={{ value: `退職 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
-              {pensionStartAge !== retireAge && (
-                <ReferenceLine x={pensionStartAge} stroke="#F47920" strokeDasharray="4 4"
-                  label={{ value: `年金開始 ${pensionStartAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#F47920' }} />
-              )}
+                label={{ value: `定年 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
               {zeroAge && (
                 <ReferenceLine x={zeroAge} stroke="#e74c3c" strokeDasharray="5 3"
                   label={{ value: `枯渇 ${zeroAge}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
               )}
-              <Line type="monotone" dataKey="assets" stroke="#F47920" strokeWidth={2.5} dot={false} name="資産" />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -819,63 +969,34 @@ export default function SimTab() {
       {/* AI相談 */}
       <AIChat context={aiContext} />
 
-      {/* パラメータ設定 */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">
-          パラメータ設定
-          {settingsStatus !== 'idle' && (
-            <span className="sim-section-note">{SETTINGS_STATUS_LABEL[settingsStatus]}</span>
-          )}
-        </summary>
-        <div className="sim-fields">
-          {[
-            { label: '現在年齢',     key: 'currentAge',     unit: '歳' },
-            { label: '退職予定年齢', key: 'retireAge',       unit: '歳' },
-            { label: '平均寿命',     key: 'lifeExpectancy',  unit: '歳' },
-            { label: '投資の想定利回り', key: 'returnRate',    unit: '% / 年', note: '投信＋DC' },
-            { label: '預金金利',         key: 'cashRate',      unit: '% / 年' },
-            { label: '物価上昇率',       key: 'inflationRate', unit: '% / 年', note: '日銀の物価目標2%' },
-            { label: '収入の伸び率',     key: 'incomeGrowth',  unit: '% / 年', note: '昇給。本人と妻の手取りに適用' },
-            { label: '妻の現在年齢',     key: 'wifeAge',       unit: '歳' },
-            { label: '妻の年金',         key: 'wifePensionMonthly',  unit: '円 / 月', note: 'ねんきん定期便の見込み額' },
-            { label: '妻の年金開始年齢', key: 'wifePensionStartAge', unit: '歳（妻の年齢）' },
-            { label: '退職後の生活費',   key: 'retireExpenseRate', unit: '%', note: '現役時に対する割合。家賃は対象外' },
-            { label: '退職金（手取り）', key: 'retirementBonus',   unit: '円', note: '退職年に一括で入る。就業規則・退職金規程で確認' },
-            { label: '保険の受け取り年齢', key: 'insuranceAge',    unit: '歳', note: '外貨保険を解約して一括で受け取る年齢' },
-            { label: '家賃',             key: 'monthlyRent',   unit: '円 / 月', note: '老後も払う前提。マイホーム購入後は不要' },
-          ].map(({ label, key, unit, note }) => (
-            <label key={key} className="sim-field">
-              <span className="sim-field-label">
-                {label}
-                {note && <span className="sim-field-note">{note}</span>}
-              </span>
-              <div className="sim-field-row">
-                <NumInput className="sim-num-input" value={params[key]} onChange={v => setParams(p => ({ ...p, [key]: v }))} />
-                <span className="sim-field-unit">{unit}</span>
-              </div>
-            </label>
-          ))}
-          <label className="sim-field">
-            <span className="sim-field-label">年金受給開始年齢</span>
-            <div className="sim-field-row">
-              {[60, 65, 70].map(age => (
-                <button key={age}
-                  className={`sim-choice-btn${params.pensionStartAge === age ? ' active' : ''}`}
-                  onClick={() => setParams(p => ({ ...p, pensionStartAge: age }))}>
-                  {age}歳
-                </button>
-              ))}
-            </div>
-          </label>
-        </div>
-      </details>
+      {/* ─── 前提（入力） ─── */}
+      <div className="sim-premise-head">
+        前提
+        <span className="sim-section-note">
+          {settingsStatus !== 'idle' ? SETTINGS_STATUS_LABEL[settingsStatus] : '「取得」の値はデータ再取得で入ります（手で上書きも可）'}
+        </span>
+      </div>
 
-      {/* 妻の収入 */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">
-          妻の手取り年収
-          <span className="sim-section-note">末っ子の成長に合わせて上乗せ（子どもがいない・生まれる前は全額）</span>
-        </summary>
+      <Section icon="👪" title="家族と経済の前提"
+        summary={`あなた${params.currentAge}歳・妻${params.wifeAge}歳／寿命${lifeExpectancy}歳／物価${params.inflationRate}%・利回り${params.returnRate}%`}>
+        <div className="sim-fields">
+          <Field label="あなたの年齢" unit="歳" value={params.currentAge} onChange={setP('currentAge')} />
+          <Field label="妻の年齢" unit="歳" value={params.wifeAge} onChange={setP('wifeAge')} />
+          <Field label="想定寿命" unit="歳" note="ここまでシミュレーション" value={params.lifeExpectancy} onChange={setP('lifeExpectancy')} />
+          <Field label="物価上昇率" unit="% / 年" note="日銀の物価目標2%" value={params.inflationRate} onChange={setP('inflationRate')} />
+          <Field label="投資の想定利回り" unit="% / 年" note="投信・DC" value={params.returnRate} onChange={setP('returnRate')} />
+          <Field label="預金金利" unit="% / 年" value={params.cashRate} onChange={setP('cashRate')} />
+        </div>
+      </Section>
+
+      <Section icon="💼" title="収入と働き方"
+        summary={`あなた${man(vals.myIncome)}・妻${man(wifeIncomeNow)}／定年${retireAge}歳／${work.me.reducedFrom}歳から${work.me.reducedRate}%`}>
+        <div className="sim-fields">
+          <Field label="あなたの手取り年収" unit="円 / 年" note={incomeNote} fetched wide value={vals.myIncome} onChange={setV('myIncome')} />
+          <Field label="収入の伸び率" unit="% / 年" note="昇給。夫婦の手取りに、昇給が止まる年齢まで" value={params.incomeGrowth} onChange={setP('incomeGrowth')} />
+          <Field label="定年（退職予定年齢）" unit="歳" note="積立・DC掛金が止まり、生活費が退職後の割合になる" value={params.retireAge} onChange={setP('retireAge')} />
+        </div>
+        <div className="sim-subhead">妻の手取り年収 <span className="sim-section-note">末っ子の成長に合わせて上乗せ（子どもがいない・生まれる前は全額）</span></div>
         <div className="sim-events">
           <div className="sim-event-body">
             <EventNumField label="基本" unit="円 / 年" wide
@@ -895,19 +1016,11 @@ export default function SimTab() {
               </div>
             ))}
             <p className="sim-ef-note">
-              今年の妻の手取り {fmt(wifeIncomeAt(wife, [child1, child2], 0))}
-              （ライフイベントの子どもの年齢で計算。子どもをオフにすると全額。60歳以降は「60歳以降の働き方」の設定どおり）
+              今年の妻の手取り {fmt(wifeIncomeNow)}（ライフイベントの子どもの年齢で計算。子どもをオフにすると全額）
             </p>
           </div>
         </div>
-      </details>
-
-      {/* 60歳以降の働き方 */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">
-          60歳以降の働き方
-          <span className="sim-section-note">夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収</span>
-        </summary>
+        <div className="sim-subhead">60歳以降の働き方 <span className="sim-section-note">夫婦それぞれの年齢で</span></div>
         <div className="sim-events">
           <WorkFields title="あなた" w={work.me} ageNow={params.currentAge}
             onChange={patch => setWork(x => ({ ...x, me: { ...x.me, ...patch } }))}
@@ -916,48 +1029,65 @@ export default function SimTab() {
             onChange={patch => setWork(x => ({ ...x, wife: { ...x.wife, ...patch } }))}
             incomeAt={age => workIncomeAt(wifeIncomeAt(wife, [child1, child2], age - params.wifeAge), work.wife, age, params.wifeAge, params.incomeGrowth)} />
           <p className="sim-ef-note">
-            金額は手取りの年額。昇給は「収入の伸び率」で、止まる年齢まで続きます。65歳以降の年収は物価では増やしません。
-            働きながら年金を受け取っても減らさない前提です（在職老齢年金は考えない）。
+            金額は手取りの年額。65歳以降の年収は物価では増やしません。働きながら年金を受け取っても減らさない前提です（在職老齢年金は考えない）。
           </p>
         </div>
-      </details>
+      </Section>
 
-      {/* 取得データ */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">
-          取得データ
-          <span className="sim-section-note">手動で変更可</span>
-        </summary>
+      <Section icon="🛒" title="支出"
+        summary={`月${man1(monthlyLiving)}（退職後 月${man1(retireLiving)}）`}>
         <div className="sim-fields">
-          {[
-            { label: '預金',            key: 'cashAssets',        unit: '円',       note: '預金金利で増える' },
-            { label: '投資資産',        key: 'investAssets',      unit: '円',       note: '投信＋DC評価額' },
-            { label: 'あなたの手取り年収', key: 'myIncome',        unit: '円 / 年',  note: incomeNote },
-            { label: '投信積立',        key: 'monthlyFundInvest', unit: '円 / 月',  note: '手取りから' },
-            { label: 'DC掛金',          key: 'monthlyDCInvest',   unit: '円 / 月',  note: '会社＋自己（給与天引き）' },
-            { label: '生活費（安心＋彩り）', key: 'monthlyExpense', unit: '円 / 月',  note: expenseNote },
-            { label: 'ときめき＋冒険',  key: 'yutoriAnnual',      unit: '円 / 年',  note: yutoriNote },
-            { label: 'あなたの年金',    key: 'pensionMonthly',    unit: '円 / 月',  note: '年金タブより' },
-            { label: '保険返戻予定額',  key: 'insuranceReturn',   unit: '円（一括）', note: `外貨保険を${params.insuranceAge}歳で解約（保険simuの解約返戻金表×今の為替）` },
-          ].map(({ label, key, unit, note }) => (
-            <label key={key} className="sim-field">
-              <span className="sim-field-label">
-                {label}
-                <span className="sim-field-note">{note}</span>
-              </span>
-              <div className="sim-field-row">
-                <NumInput className="sim-num-input sim-num-input--wide"
-                  value={vals[key]} onChange={v => setVals(p => ({ ...p, [key]: v }))} />
-                <span className="sim-field-unit">{unit}</span>
-              </div>
-            </label>
-          ))}
+          <Field label="生活費（安心＋彩り）" unit="円 / 月" note={expenseNote} fetched wide value={vals.monthlyExpense} onChange={setV('monthlyExpense')} />
+          <Field label="ときめき＋冒険" unit="円 / 年" note={yutoriNote} fetched wide value={vals.yutoriAnnual} onChange={setV('yutoriAnnual')} />
+          <Field label="家賃" unit="円 / 月" note="マイホーム購入後は不要（ライフイベント）" wide value={params.monthlyRent} onChange={setP('monthlyRent')} />
+          <Field label="退職後の生活費" unit="%" note="現役時に対する割合。家賃は対象外" value={params.retireExpenseRate} onChange={setP('retireExpenseRate')} />
         </div>
-      </details>
+        <p className="sim-ef-note sim-section-foot">
+          今の月の生活費 {fmt(monthlyLiving)}（生活費＋家賃＋ときめき冒険の月割り）／ 退職後 {fmt(retireLiving)}（今の物価で）
+        </p>
+      </Section>
 
-      {/* ライフイベント */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">ライフイベント</summary>
+      <Section icon="🏦" title="資産と積立"
+        summary={`預金${man(vals.cashAssets)}・投信${man(vals.fundAssets)}・DC${man(vals.dcAssets)}・保険${man(vals.insuranceReturn)}`}>
+        <div className="sim-fields">
+          <Field label="預金" unit="円" note="預金金利で増える" fetched wide value={vals.cashAssets} onChange={setV('cashAssets')} />
+          <Field label="投資信託" unit="円" note="評価額。預金が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
+          <Field label="投信積立" unit="円 / 月" note="手取りから。定年まで" fetched wide value={vals.monthlyFundInvest} onChange={setV('monthlyFundInvest')} />
+        </div>
+        <div className="sim-subhead">DC（企業型確定拠出年金）＝退職金 <span className="sim-section-note">受け取るまでは取り崩せない</span></div>
+        <div className="sim-fields">
+          <Field label="DC評価額" unit="円" fetched wide value={vals.dcAssets} onChange={setV('dcAssets')} />
+          <Field label="DC掛金" unit="円 / 月" note="会社＋自己（給与天引き）。定年まで" fetched wide value={vals.monthlyDCInvest} onChange={setV('monthlyDCInvest')} />
+          <Field label="受け取る年齢" unit="歳" note="60〜75歳" value={params.dcReceiveAge} onChange={setP('dcReceiveAge')} />
+          <Choice label="受け取り方" note={params.dcMode === 'annuity' ? '毎年に分けて預金へ' : '全額を投資へ移す'}
+            options={[['lump', '一時金'], ['annuity', '年金']]} value={params.dcMode} onChange={setP('dcMode')} />
+          {params.dcMode === 'annuity' && (
+            <Field label="年金で受け取る年数" unit="年" note="5〜20年" value={params.dcYears} onChange={setP('dcYears')} />
+          )}
+        </div>
+        <div className="sim-subhead">外貨保険</div>
+        <div className="sim-fields">
+          <Field label="返戻予定額" unit="円（一括）" note={`${params.insuranceAge}歳で解約（保険simuの解約返戻金表×今の為替）`} fetched wide
+            value={vals.insuranceReturn} onChange={setV('insuranceReturn')} />
+          <Field label="受け取る年齢" unit="歳" value={params.insuranceAge} onChange={setP('insuranceAge')} />
+        </div>
+      </Section>
+
+      <Section icon="🧓" title="年金"
+        summary={`夫婦で月${man1(totalPension)}（あなた${pensionStartAge}歳〜／妻${params.wifePensionStartAge}歳〜）`}>
+        <div className="sim-fields">
+          <Field label="あなたの年金" unit="円 / 月" note="年金タブ（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
+          <Choice label="あなたの受給開始" options={[[60, '60歳'], [65, '65歳'], [70, '70歳']]}
+            value={params.pensionStartAge} onChange={setP('pensionStartAge')} />
+          <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />
+          <Field label="妻の受給開始" unit="歳（妻の年齢）" value={params.wifePensionStartAge} onChange={setP('wifePensionStartAge')} />
+        </div>
+        <p className="sim-ef-note sim-section-foot">
+          夫婦の年金 月{fmt(totalPension)}（今の物価で。シミュレーションでは物価上昇率で増やす）
+        </p>
+      </Section>
+
+      <Section icon="🏠" title="ライフイベント" summary={lifeEventSummary}>
         <div className="sim-events">
           <ChildEvent label="👶 子供1" state={child1} onChange={setChild1} />
           <ChildEvent label="👶 子供2" state={child2} onChange={setChild2} />
@@ -1088,68 +1218,7 @@ export default function SimTab() {
             )}
           </div>
         </div>
-      </details>
-
-      {/* 老後資金チェック */}
-      <details className="sim-section sim-collapse">
-        <summary className="sim-section-title">老後資金チェック</summary>
-        <div className="sim-check-grid">
-          <SumCard
-            label="今年の家計の収支（退職前）"
-            value={fmtSign(householdNow)}
-            sub={`手取り あなた ${fmt(vals.myIncome)} ＋ 妻 ${fmt(wifeIncomeNow)}${wifeBeforeBirth ? '（出産前は0円）' : ''} − 生活費 ${fmt(monthlyLiving * 12)}。` +
-              (fundInvestAnnual
-                ? `投信積立 ${fmt(fundInvestAnnual)} を引くと、預金は年 ${annualSurplusNow < 0 ? '▲' : '+'}${fmt(annualSurplusNow)}（積立分は投資に移るだけ）`
-                : '')}
-            pos={householdNow > 0} neg={householdNow <= 0} />
-          <SumCard
-            label="退職時の総資産予測"
-            value={fmtSign(retireAssets)}
-            sub={`${retireAge}歳時点`}
-            pos={retireAssets > 0} neg={retireAssets <= 0} />
-          <SumCard
-            label="月の生活費"
-            value={fmt(monthlyLiving)}
-            sub="安心＋彩り＋家賃＋ときめき冒険の月割り" />
-          <SumCard
-            label="年金受給額（月額）"
-            value={totalPension > 0 ? fmt(totalPension) : '未入力'}
-            sub={`あなた ${pensionStartAge}歳〜 ＋ 妻 ${params.wifePensionStartAge}歳〜（妻の年齢）`}
-            pos={totalPension > 0} />
-          <SumCard
-            label="月の不足額"
-            value={monthlyShortfall > 0 ? fmt(monthlyShortfall) : '不足なし ✓'}
-            sub={
-              `生活費 ${fmt(retireLivingBase)}（${params.retireExpenseRate}%）＋ 住居費 ${fmt(retireHousing)}` +
-              (homeOn
-                ? `（${retireRent ? `家賃 ${fmt(retireRent)}・` : ''}維持費 ${fmt(retireHomeCost)}${retireLoan ? `・ローン ${fmt(retireLoan)}` : ''}）`
-                : '（家賃）') +
-              ` − 年金 ${fmt(totalPension)}` +
-              (shortfallAfterLoan != null
-                ? `。ローン完済（${homeLoanEndAge}歳）後は ${shortfallAfterLoan > 0 ? fmt(shortfallAfterLoan) : '不足なし'}`
-                : '')
-            }
-            pos={monthlyShortfall === 0} neg={monthlyShortfall > 0} />
-          <SumCard
-            label="資産が尽きる年齢"
-            value={zeroAge ? `${zeroAge}歳` : `${lifeExpectancy}歳以降 ✓`}
-            sub="ライフイベント込み"
-            pos={!zeroAge} neg={!!zeroAge} />
-          {requiredExtra > 0 ? (
-            <SumCard
-              label={`追加必要月積立額`}
-              value={fmt(requiredExtra)}
-              sub={`退職まで毎月あと${fmt(requiredExtra)}貯めれば${lifeExpectancy}歳までもつ`}
-              neg />
-          ) : (
-            <SumCard
-              label="資産寿命"
-              value={`${lifeExpectancy}歳まで充足 ✓`}
-              sub="追加積立不要"
-              pos />
-          )}
-        </div>
-      </details>
+      </Section>
 
     </div>
   )
