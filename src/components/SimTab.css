@@ -340,3 +340,8 @@
   padding-bottom: 0;
   border-bottom: none;
 }
+
+/* ─── 60歳以降の働き方 ─── */
+.sim-work { flex-direction: column; align-items: stretch; }
+.sim-work-row { flex-wrap: wrap; }
+.sim-mini-input--age { width: 3.2em; }

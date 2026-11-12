@@ -854,6 +854,12 @@ function buildLPContext(d) {
       '/月、' + home.repairEvery + '年ごと修繕' + yen(home.repairCost) + '、購入後の家賃' + (home.stopRent ? '不要' : '継続') +
       '、' + (ev.homestLinked ? '家タブと連携' : '手入力') + '）' : '')
 
+  function workLine(who, x) {
+    if (!x) return ''
+    return '- ' + who + 'の働き方: ' + x.raiseStopAge + '歳で昇給停止、' + x.reducedFrom + '歳から給料' + x.reducedRate + '%、' +
+      x.lateFrom + '〜' + x.lateUntil + '歳は手取り年' + yen(x.lateIncome) + '（0なら働かない）、' + x.lateUntil + '歳で引退\n'
+  }
+
   var LEVEL = { ng: '【不足】', warn: '【要確認】', info: '【参考】' }
   function checkLines(arr, empty) { return lines((arr || []).map(function(c) { return '- ' + (LEVEL[c.level] || '') + c.text }), empty) }
 
@@ -869,7 +875,8 @@ function buildLPContext(d) {
     '- 本人 ' + p.currentAge + '歳 / 退職 ' + p.retireAge + '歳 / 想定寿命 ' + p.lifeExpectancy + '歳 / 年金開始 ' + p.pensionStartAge + '歳\n' +
     '- 妻 ' + p.wifeAge + '歳 / 妻の年金 ' + yen(p.wifePensionMonthly) + '/月（妻' + p.wifePensionStartAge + '歳から）\n' +
     '- 投資利回り ' + p.returnRate + '% / 預金金利 ' + p.cashRate + '% / 物価上昇率 ' + p.inflationRate + '% / 収入の伸び ' + p.incomeGrowth + '%\n' +
-    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '% / 退職金（手取り） ' + yen(p.retirementBonus) + '\n\n' +
+    '- 家賃 ' + yen(p.monthlyRent) + '/月 / 退職後の生活費 現役時の' + p.retireExpenseRate + '% / 退職金（手取り） ' + yen(p.retirementBonus) + '\n' +
+    workLine('あなた', (lp.work || {}).me) + workLine('妻', (lp.work || {}).wife) + '\n' +
     '# 取得データ\n' +
     '- 預金 ' + yen(v.cashAssets) + ' / 投資資産（投信＋DC） ' + yen(v.investAssets) + '\n' +
     '- あなたの手取り年収 ' + yen(v.myIncome) + '（' + (notes.income || '') + '）\n' +

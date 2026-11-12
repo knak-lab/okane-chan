@@ -113,6 +113,26 @@ function wifeIncomeAt(wife, children, t) {
   )
 }
 
+// 60歳以降の働き方（夫婦それぞれ、本人の年齢で判定）
+//   〜昇給が止まる年齢：今の手取り × 収入の伸び率
+//   昇給が止まる年齢〜：その時点の額のまま
+//   減額の年齢〜      ：その額 × 減額後の割合（再雇用など）
+//   シニア期（65〜70歳など）：手取り年収を金額で指定（0なら働かない。物価では増やさない）
+//   シニア期の終わり〜：収入なし
+const DEFAULT_WORK = {
+  me:   { raiseStopAge: 55, reducedFrom: 60, reducedRate: 50,  lateFrom: 65, lateUntil: 70, lateIncome: 0 },
+  wife: { raiseStopAge: 55, reducedFrom: 60, reducedRate: 100, lateFrom: 65, lateUntil: 70, lateIncome: 0 },
+}
+// baseNow: 今の金額での手取り年収（妻は子どもの年齢による段階を反映した額）
+function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
+  if (age >= Number(w.lateUntil)) return 0
+  if (age >= Number(w.lateFrom)) return Number(w.lateIncome) || 0
+  const raiseYears = Math.max(0, Math.min(age, Number(w.raiseStopAge)) - ageNow)
+  let v = baseNow * (1 + (incomeGrowth || 0) / 100) ** raiseYears
+  if (age >= Number(w.reducedFrom)) v *= (Number(w.reducedRate) || 0) / 100
+  return v
+}
+
 // 資産は「預金」と「投資（投信＋DC）」に分けて別の利回りで増やす。
 // 退職前：手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
 //         DC掛金は給与天引き・会社拠出なので手取りからは引かず、投資に直接入る。
@@ -125,7 +145,8 @@ const MODEL_ASSUMPTIONS = [
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）。DCも退職前に取り崩せる扱い',
-  '妻の収入はあなたの退職と同時にゼロになる',
+  '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
+  '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
   '住宅ローン控除・固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
@@ -138,7 +159,8 @@ function runSim(p, events) {
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn, insuranceAge = retireAge, retirementBonus = 0, retireExpenseRate = 100 } = p
+          insuranceReturn, insuranceAge = retireAge, retirementBonus = 0, retireExpenseRate = 100,
+          work = DEFAULT_WORK } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -159,9 +181,10 @@ function runSim(p, events) {
     const retired    = age >= retireAge
     const hasPension = age >= pensionStartAge
 
-    const growth        = (1 + (incomeGrowth || 0) / 100) ** t
     const children      = events ? [events.child1, events.child2] : []
-    const annualIncome  = retired ? 0 : (myIncome + wifeIncomeAt(wife, children, t)) * growth
+    // 収入は退職年齢ではなく、夫婦それぞれの働き方（年齢）で決まる
+    const annualIncome  = workIncomeAt(myIncome, work.me, age, startAge, incomeGrowth)
+      + workIncomeAt(wifeIncomeAt(wife, children, t), work.wife, wifeAge + t, wifeAge, incomeGrowth)
     const fundInvest    = retired ? 0 : monthlyFundInvest * 12
     const dcInvest      = retired ? 0 : monthlyDCInvest * 12
     const extra         = retired ? 0 : extraSaving * 12  // 追加必要積立額の逆算用
@@ -170,7 +193,7 @@ function runSim(p, events) {
     const annualExpense = ((monthlyExpense * livingRate + monthlyRent) * 12 + yutoriAnnual * livingRate) * infl
     // 妻の年金は妻の年齢で受給開始（あなたの退職前に始まる場合も含む）
     const wifePension   = wifeAge + t >= wifePensionStartAge ? wifePensionMonthly * 12 * infl : 0
-    const annualPension = (retired && hasPension ? pensionMonthly * 12 * infl : 0) + wifePension
+    const annualPension = (hasPension ? pensionMonthly * 12 * infl : 0) + wifePension  // 働いていても受け取る（在職老齢年金の減額は考えない）
 
     // ライフイベントコスト
     let eventCost = 0
@@ -320,6 +343,34 @@ function EventNumField({ label, unit, value, onChange, wide }) {
   )
 }
 
+// 60歳以降の働き方（1人分）
+function WorkFields({ title, w, ageNow, onChange, incomeAt }) {
+  const row = (children) => <div className="sim-ef-row sim-work-row">{children}</div>
+  const num = (key, wide) => (
+    <NumInput className={`sim-mini-input ${wide ? 'sim-mini-input--wide' : 'sim-mini-input--age'}`} value={w[key]}
+      onChange={v => onChange({ [key]: v })} />
+  )
+  const checkpoints = [...new Set([ageNow, Number(w.raiseStopAge), Number(w.reducedFrom), Number(w.lateFrom), Number(w.lateUntil)])]
+    .filter(a => a >= ageNow).sort((a, b) => a - b)
+  return (
+    <div className="sim-event-body sim-work">
+      <div className="sim-ef-label"><strong>{title}</strong>（今 {ageNow}歳）</div>
+      <div className="sim-ef">
+        {row(<>{num('raiseStopAge')}<span className="sim-ef-unit">歳で昇給が止まる</span></>)}
+      </div>
+      <div className="sim-ef">
+        {row(<>{num('reducedFrom')}<span className="sim-ef-unit">歳から給料を</span>{num('reducedRate')}<span className="sim-ef-unit">%に</span></>)}
+      </div>
+      <div className="sim-ef">
+        {row(<>{num('lateFrom')}<span className="sim-ef-unit">〜</span>{num('lateUntil')}<span className="sim-ef-unit">歳は 手取り年</span>{num('lateIncome', true)}<span className="sim-ef-unit">円（0なら働かない）</span></>)}
+      </div>
+      <p className="sim-ef-note">
+        手取り年収：{checkpoints.map(a => `${a}歳 ${fmt(incomeAt(a))}`).join(' → ')}
+      </p>
+    </div>
+  )
+}
+
 function SumCard({ label, value, sub, pos, neg }) {
   return (
     <div className={`sim-sum-card${pos ? ' pos' : neg ? ' neg' : ''}`}>
@@ -405,6 +456,7 @@ export default function SimTab() {
   const [dog,    setDog]    = useState({ enabled: false, size: 'small', yearsFromNow: 1, initialCost: 300_000, ...DOG_SIZES.small.defaults })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
+  const [work, setWork] = useState(DEFAULT_WORK)           // 60歳以降の働き方
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
@@ -420,7 +472,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -437,6 +489,7 @@ export default function SimTab() {
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
           if (s.wife)   setWife(w => ({ ...w, ...s.wife }))
           if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs)
+          if (s.work) setWork(w => ({ me: { ...w.me, ...s.work.me }, wife: { ...w.wife, ...s.work.wife } }))
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -618,7 +671,8 @@ export default function SimTab() {
     insuranceAge:    params.insuranceAge,
     retireExpenseRate: params.retireExpenseRate,
     retirementBonus: params.retirementBonus,
-  }), [params, vals, wife])
+    work,
+  }), [params, vals, wife, work])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
   // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
@@ -674,7 +728,7 @@ export default function SimTab() {
 
   // LPチェック・AIに渡すLPタブの中身
   const lp = {
-    params, vals, wife, assumptions: MODEL_ASSUMPTIONS,
+    params, vals, wife, work, assumptions: MODEL_ASSUMPTIONS,
     dataMeta: { ...dataMeta, insurance: insDetail },
     notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
     events: { child1, child2, car, dog, home: homeEff, homestLinked },
@@ -842,9 +896,29 @@ export default function SimTab() {
             ))}
             <p className="sim-ef-note">
               今年の妻の手取り {fmt(wifeIncomeAt(wife, [child1, child2], 0))}
-              （ライフイベントの子どもの年齢で計算。子どもをオフにすると全額。あなたの退職と同時に終わる前提）
+              （ライフイベントの子どもの年齢で計算。子どもをオフにすると全額。60歳以降は「60歳以降の働き方」の設定どおり）
             </p>
           </div>
+        </div>
+      </details>
+
+      {/* 60歳以降の働き方 */}
+      <details className="sim-section sim-collapse">
+        <summary className="sim-section-title">
+          60歳以降の働き方
+          <span className="sim-section-note">夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収</span>
+        </summary>
+        <div className="sim-events">
+          <WorkFields title="あなた" w={work.me} ageNow={params.currentAge}
+            onChange={patch => setWork(x => ({ ...x, me: { ...x.me, ...patch } }))}
+            incomeAt={age => workIncomeAt(vals.myIncome, work.me, age, params.currentAge, params.incomeGrowth)} />
+          <WorkFields title="妻" w={work.wife} ageNow={params.wifeAge}
+            onChange={patch => setWork(x => ({ ...x, wife: { ...x.wife, ...patch } }))}
+            incomeAt={age => workIncomeAt(wifeIncomeAt(wife, [child1, child2], age - params.wifeAge), work.wife, age, params.wifeAge, params.incomeGrowth)} />
+          <p className="sim-ef-note">
+            金額は手取りの年額。昇給は「収入の伸び率」で、止まる年齢まで続きます。65歳以降の年収は物価では増やしません。
+            働きながら年金を受け取っても減らさない前提です（在職老齢年金は考えない）。
+          </p>
         </div>
       </details>
 

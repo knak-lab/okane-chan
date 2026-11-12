@@ -156,6 +156,13 @@ export const WHATIF_FIELDS = [
   { key: 'monthlyFundInvest', label: '投信積立',             unit: '円/月', target: 'p' },
   { key: 'extraSaving',       label: '追加の積立',           unit: '円/月', target: 'p' },
   { key: 'lifeExpectancy',    label: '想定寿命',             unit: '歳',   target: 'p', simKey: 'endAge' },
+  { key: 'meRaiseStopAge',    label: 'あなたの昇給が止まる年齢', unit: '歳',  target: 'work', who: 'me',   field: 'raiseStopAge' },
+  { key: 'meReducedRate',     label: 'あなたの減額後の給料',  unit: '%',    target: 'work', who: 'me',   field: 'reducedRate' },
+  { key: 'meLateIncome',      label: 'あなたの65歳以降の年収', unit: '円/年', target: 'work', who: 'me',   field: 'lateIncome' },
+  { key: 'meLateUntil',       label: 'あなたが働くのをやめる年齢', unit: '歳', target: 'work', who: 'me',   field: 'lateUntil' },
+  { key: 'wifeReducedRate',   label: '妻の減額後の給料',      unit: '%',    target: 'work', who: 'wife', field: 'reducedRate' },
+  { key: 'wifeLateIncome',    label: '妻の65歳以降の年収',    unit: '円/年', target: 'work', who: 'wife', field: 'lateIncome' },
+  { key: 'wifeLateUntil',     label: '妻が働くのをやめる年齢', unit: '歳',   target: 'work', who: 'wife', field: 'lateUntil' },
   { key: 'loanYears',         label: 'ローン期間',           unit: '年',   target: 'home' },
   { key: 'loanRate',          label: 'ローン金利',           unit: '%/年', target: 'home' },
   { key: 'downPayment',       label: '頭金',                 unit: '円',   target: 'home' },
@@ -167,7 +174,9 @@ export const whatIfField = (key) => WHATIF_FIELDS.find(f => f.key === key)
 export function currentValue(key, simParams, events) {
   const f = whatIfField(key)
   if (!f) return 0
-  return f.target === 'home' ? Number(events.home?.[key]) || 0 : Number(simParams[f.simKey || key]) || 0
+  if (f.target === 'home') return Number(events.home?.[key]) || 0
+  if (f.target === 'work') return Number(simParams.work?.[f.who]?.[f.field]) || 0
+  return Number(simParams[f.simKey || key]) || 0
 }
 
 export const DEFAULT_WHATIFS = [
@@ -185,7 +194,9 @@ export function applyWhatIfs(simParams, events, conds) {
     const f = whatIfField(c.key)
     if (!f) continue
     if (f.target === 'home') ev.home[c.key] = Number(c.value) || 0
-    else p[f.simKey || c.key] = Number(c.value) || 0
+    else if (f.target === 'work') {
+      p.work = { ...p.work, [f.who]: { ...p.work?.[f.who], [f.field]: Number(c.value) || 0 } }
+    } else p[f.simKey || c.key] = Number(c.value) || 0
   }
   return { simParams: p, events: ev }
 }
