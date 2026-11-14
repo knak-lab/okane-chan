@@ -107,3 +107,7 @@
   font-size: 0.82rem;
   cursor: pointer;
 }
+
+.lpc-pass { font-weight: 700; }
+.lpc-pass.pos { color: #2e7d32; }
+.lpc-pass.neg { color: #c62828; }

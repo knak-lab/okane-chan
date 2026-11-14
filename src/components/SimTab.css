@@ -402,3 +402,12 @@
 .sim-pass-list { margin: 0; padding-left: 0; list-style: none; font-size: 0.8rem; line-height: 1.6; }
 .sim-pass-note { margin: 0.35rem 0 0; font-size: 0.72rem; color: #57606a; line-height: 1.5; }
 .sim-tt-short { color: #c62828; }
+
+/* ─── 合格するための条件 ─── */
+.sim-seek { margin-top: 0.6rem; background: #fff; border-radius: 8px; padding: 0.5rem 0.7rem; border: 1px solid #f3c2c2; }
+.sim-seek > summary { font-weight: 700; font-size: 0.85rem; cursor: pointer; }
+.sim-seek-list { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+.sim-seek-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; padding: 0.35rem 0; border-top: 1px solid #f3f3f3; font-size: 0.8rem; }
+.sim-seek-label { font-weight: 600; min-width: 11em; }
+.sim-seek-none { color: #999; }
+.sim-seek-add { margin-left: auto; border: 1px solid #9fb0d6; background: #fff; color: #003087; border-radius: 6px; font-size: 0.72rem; padding: 0.15rem 0.5rem; cursor: pointer; }
