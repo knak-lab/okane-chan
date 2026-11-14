@@ -149,7 +149,7 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
   '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
-  '外貨保険は保険ごとに、決めた年まで年払いの保険料を払い、その年に解約して一括で受け取る（保険simuの解約返戻金表、今の為替レートで円換算。税金は考慮していない）',
+  '外貨保険は保険ごとに、払込をやめる年まで年払いの保険料を払い、返戻金はその年の解約返戻金表（保険simu）の金額で確定。受け取る年まで増やさずに一括で受け取る（今の為替レートで円換算。税金は考慮していない）',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
@@ -539,7 +539,8 @@ export default function SimTab() {
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
   const [work, setWork] = useState(DEFAULT_WORK)           // 60歳以降の働き方
-  const [insPayEnd, setInsPayEnd] = useState({})          // 外貨保険ごとの払込終了年 { 保険名: 西暦 }
+  const [insPayEnd, setInsPayEnd] = useState({})          // 外貨保険ごとの払込をやめる年 { 保険名: 西暦 }
+  const [insReceive, setInsReceive] = useState({})        // 外貨保険ごとの受け取る年 { 保険名: 西暦 }（なければ払込をやめる年）
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
@@ -555,7 +556,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd, insReceive })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -578,6 +579,7 @@ export default function SimTab() {
           if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs.filter(w => whatIfField(w.key)))
           if (s.work) setWork(w => ({ me: { ...w.me, ...s.work.me }, wife: { ...w.wife, ...s.work.wife } }))
           if (s.insPayEnd) setInsPayEnd(s.insPayEnd)
+          if (s.insReceive) setInsReceive(s.insReceive)
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -734,13 +736,16 @@ export default function SimTab() {
   const { monthlyExpense, pensionMonthly } = vals
 
   // ─── 外貨保険（保険ごと） ─────────────────────────
-  // 保険ごとに1つの年を決める：その年まで年払いの保険料を払い、その年に解約して返戻金を受け取る。
-  //  ・保険料：「年払い額(USD) × 今の為替」を毎年。今年の年払い記録があれば今年分は払い済みとして来年から
-  //  ・返戻金：保険simuの解約返戻金表のその年の一括額 × 今の為替（表にない年は前後から推計）
+  // 保険ごとに「払込をやめる年」と「受け取る年」を決める（受け取る年の初期値は払込をやめる年）。
+  //  ・保険料：払込をやめる年まで「年払い額(USD) × 今の為替」を毎年。今年の年払い記録があれば今年分は払い済みとして来年から
+  //  ・返戻金：払込をやめた年の解約返戻金表の一括額で確定し、受け取る年までは増えない（今の為替で円換算）
+  //  ・受け取る年を払込をやめる年より前にした場合は、受け取る年で払込もやめる
   const insPolicies = useMemo(() => {
     if (!insData) return []
     const thisYear = new Date().getFullYear()
-    const yearOf = (name) => Math.max(thisYear, Number(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge)) || thisYear)
+    const payEndOf = (name) => Math.max(thisYear, Number(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge)) || thisYear)
+    const receiveOf = (name) => Math.max(thisYear, Number(insReceive[name] ?? payEndOf(name)) || payEndOf(name))
+    const yearOf = (name) => Math.min(payEndOf(name), receiveOf(name))
     const surrender = Object.fromEntries(surrenderAtYears(insData, yearOf).map(d => [d.name, d]))
     return (insData.masters || []).map(m => {
       const name = m['保険名']
@@ -748,17 +753,19 @@ export default function SimTab() {
       const paidThisYear = (insData.payments || []).some(x => x['保険名'] === name && toYM(x['年月']).startsWith(String(thisYear)))
       const startYear = paidThisYear ? thisYear + 1 : thisYear
       const endYear = yearOf(name)
+      const receiveYear = receiveOf(name)
       const times = usd > 0 ? Math.max(0, endYear - startYear + 1) : 0
       const annual = Math.round(usd * insData.usdJpy)
       const sv = surrender[name] || { usd: 0, method: 'none' }
       return {
         name, usd, annual, startYear, endYear, lastYear: endYear, times, total: annual * times,
         fromAge: params.currentAge + (startYear - thisYear), toAge: params.currentAge + (endYear - thisYear),
-        receiveYear: endYear, receiveAge: params.currentAge + (endYear - thisYear),
+        payEndAge: params.currentAge + (endYear - thisYear),
+        receiveYear, receiveAge: params.currentAge + (receiveYear - thisYear), linked: insReceive[name] == null,
         method: sv.method, from: sv.from, returnUsd: sv.usd, jpy: Math.round(sv.usd * insData.usdJpy),
       }
     })
-  }, [insData, insPayEnd, params.currentAge])
+  }, [insData, insPayEnd, insReceive, params.currentAge])
   const insuranceReturnTotal = insPolicies.reduce((t, x) => t + x.jpy, 0)
   // 合計は LPチェック・AI相談・資産の要約で使う
   useEffect(() => { setVals(v => (v.insuranceReturn === insuranceReturnTotal ? v : { ...v, insuranceReturn: insuranceReturnTotal })) }, [insuranceReturnTotal])
@@ -1097,7 +1104,7 @@ export default function SimTab() {
             <Field label="年金で受け取る年数" unit="年" note="5〜20年" value={params.dcYears} onChange={setP('dcYears')} />
           )}
         </div>
-        <div className="sim-subhead">外貨保険 <span className="sim-section-note">保険ごとに、その年まで払って、その年に解約して受け取る</span></div>
+        <div className="sim-subhead">外貨保険 <span className="sim-section-note">保険ごとに、払込をやめる年と受け取る年を決める</span></div>
         {insPolicies.length === 0 ? (
           <p className="sim-ef-note">外貨保険のデータがありません（データ再取得、またはサマリタブの外貨保険で登録）</p>
         ) : (
@@ -1109,7 +1116,16 @@ export default function SimTab() {
                   <div className="sim-ef-row sim-work-row">
                     <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.endYear}
                       onChange={e => setInsPayEnd(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
-                    <span className="sim-ef-unit">年（{x.receiveAge}歳）まで払って解約</span>
+                    <span className="sim-ef-unit">年（{x.payEndAge}歳）まで払う</span>
+                  </div>
+                  <div className="sim-ef-row sim-work-row">
+                    <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.receiveYear}
+                      onChange={e => setInsReceive(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
+                    <span className="sim-ef-unit">年（{x.receiveAge}歳）に解約して受け取る{x.linked ? '（払込をやめる年と同じ）' : ''}</span>
+                    {!x.linked && (
+                      <button type="button" className="sim-link-btn"
+                        onClick={() => setInsReceive(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== x.name)))}>払込と同じ年に戻す</button>
+                    )}
                   </div>
                   <span className="sim-ef-note">
                     保険料：{x.usd > 0
@@ -1118,13 +1134,13 @@ export default function SimTab() {
                   </span>
                   <span className="sim-ef-note">
                     返戻金：{x.jpy > 0
-                      ? `${x.receiveYear}年に ${fmt(x.jpy)}（$${Math.round(x.returnUsd).toLocaleString()}・${{ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値' }[x.method] || ''}）`
+                      ? `${x.endYear}年の ${fmt(x.jpy)}（$${Math.round(x.returnUsd).toLocaleString()}・${{ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値' }[x.method] || ''}）を${x.receiveYear > x.endYear ? `増やさずに${x.receiveYear}年に` : 'その年に'}受け取る`
                       : '解約返戻金表がない（サマリタブの外貨保険で入力）'}
                   </span>
                 </div>
               ))}
               <p className="sim-ef-note">
-                返戻金の合計 {fmt(insuranceReturnTotal)}。年は保険simuの解約返戻金表から引きます。今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。
+                返戻金の合計 {fmt(insuranceReturnTotal)}。金額は払込をやめた年の解約返戻金表（保険simu）の値で決まり、受け取るまでは増えない前提です。今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。
               </p>
             </div>
           </div>

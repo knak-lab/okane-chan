@@ -887,9 +887,9 @@ function buildLPContext(d) {
     '- 生活費（安心＋彩り） ' + yen(v.monthlyExpense) + '/月（' + (notes.expense || '') + '）\n' +
     '- ときめき＋冒険 ' + yen(v.yutoriAnnual) + '/年（' + (notes.yutori || '') + '）\n' +
     '- あなたの年金 ' + yen(v.pensionMonthly) + '/月（確認 ' + (dm.pensionYearMonth || '不明') + '）\n' +
-    '- 外貨保険の返戻予定 合計' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件。保険ごとに払込終了年に解約して一括。今の為替で円換算）\n' +
+    '- 外貨保険の返戻予定 合計' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件。返戻金は払込をやめた年の表の金額で確定し、受け取るまで増えない。今の為替で円換算）\n' +
     lines((dm.insurance || []).map(function(x) {
-      return '  ' + x.name + ': ' + x.receiveYear + '年（' + x.receiveAge + '歳）に解約して受け取り ' + yen(x.jpy) + '（' + ({ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値', none: '表なし', nostart: '開始年月がなく計算できない' }[x.method] || '') + '）'
+      return '  ' + x.name + ': ' + x.endYear + '年まで払込、' + x.receiveYear + '年（' + x.receiveAge + '歳）に解約して受け取り ' + yen(x.jpy) + '（' + ({ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値', none: '表なし', nostart: '開始年月がなく計算できない' }[x.method] || '') + '）'
     }), '') + '\n' +
     lines((dm.premiums || []).map(function(x) {
       return '  年払い ' + x.name + ': 年' + yen(x.annual) + '（$' + x.usd + '）を' + x.endYear + '年まで払込。' +
