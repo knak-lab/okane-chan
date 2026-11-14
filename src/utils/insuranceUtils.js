@@ -77,10 +77,16 @@ export const surrenderYearLabel = (y) => (isCalendarYear(y) ? `${y}年` : `${y}�
 // 受け取る年（西暦）にそろえて表を引く。「何年目」の行は 開始年 ＋ 年目 で西暦に直す（開始年月が必要）。
 // 表にその年がなければ前後の年から直線で補間し、表の範囲外なら一番近い年の値を使う。
 // 戻り値: [{ name, receiveYear, usd, method: 'exact' | 'interp' | 'nearest' | 'none' | 'nostart', from: [西暦…] }]
-export function surrenderAtAge({ masters = [], surrenderValues = [] }, age, currentAge, thisYear = new Date().getFullYear()) {
+export function surrenderAtAge(data, age, currentAge, thisYear = new Date().getFullYear()) {
   const receiveYear = thisYear + (age - currentAge)
+  return surrenderAtYears(data, () => receiveYear)
+}
+
+// 保険ごとに受け取る年（西暦）を決めて引く版。yearOf(保険名) → 受け取る年
+export function surrenderAtYears({ masters = [], surrenderValues = [] }, yearOf) {
   return masters.map(m => {
     const name = m['保険名']
+    const receiveYear = Number(yearOf(name))
     const startYear = parseInt(String(m['開始年月'] || '').split(/[/-]/)[0]) || null
     const rows = surrenderValues
       .filter(s => s['保険名'] === name)
