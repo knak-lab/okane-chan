@@ -13,6 +13,19 @@ const MONTHS_CACHE_KEY = 'acc:months'
 const monthDataCacheKey = (month) => `acc:month:${month}`
 
 const fmt = (n) => `¥${Math.round(n).toLocaleString()}`
+
+// 明細をカテゴリごとにまとめる。並びはバケットのカテゴリ定義の順（定義にないものは最後）
+function groupByCategory(txs, categories) {
+  const order = (c) => { const i = categories.indexOf(c); return i < 0 ? categories.length : i }
+  const groups = new Map()
+  for (const t of txs) {
+    if (!groups.has(t.category)) groups.set(t.category, [])
+    groups.get(t.category).push(t)
+  }
+  return [...groups.entries()]
+    .map(([category, items]) => ({ category, items, total: items.reduce((s, t) => s + t.amount, 0) }))
+    .sort((a, b) => order(a.category) - order(b.category))
+}
 const CUMULATIVE = '累計'
 
 // 取引の行を特定するキー。PayPayは支払いと付与ポイントが同じ取引番号になるため、日付・金額も含める
@@ -41,6 +54,14 @@ export default function AccView() {
   const [status, setStatus]               = useState('idle')
   const [commonAccounts, setCommonAccounts] = useState([])
   const [openBucket, setOpenBucket] = useState(null)
+  // 明細の中で開いているカテゴリ（"バケット名:カテゴリ名"）。最初はすべて閉じている
+  const [openCats, setOpenCats] = useState(() => new Set())
+  const toggleCat = (key) => setOpenCats(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
   const [lastImportedAt, setLastImportedAt] = useState('')
   // 明細でカテゴリ編集中の取引: { key, category, keyword }
   const [editDraft, setEditDraft] = useState(null)
@@ -132,6 +153,7 @@ export default function AccView() {
   // 月/累計の切替時は開いていた明細を閉じる
   useEffect(() => { setOpenBucket(null) }, [selectedMonth])
   useEffect(() => {
+    setOpenCats(new Set())
     setEditDraft(null)
     setCatSave({ id: null, status: 'idle', msg: '' })
   }, [openBucket])
@@ -387,7 +409,20 @@ export default function AccView() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {detail.map(t => {
+                                {groupByCategory(detail, b.categories).map(g => {
+                                  const catKey = `${b.name}:${g.category}`
+                                  const catOpen = openCats.has(catKey)
+                                  return (
+                                    <Fragment key={catKey}>
+                                      <tr className={`acc-cat-row ${catOpen ? 'acc-cat-row--open' : ''}`} onClick={() => toggleCat(catKey)}>
+                                        <td colSpan={2}>
+                                          <span className="acc-expand-icon">{catOpen ? '▾' : '▸'}</span>
+                                          {g.category}
+                                          <span className="acc-cat-count">{g.items.length}件</span>
+                                        </td>
+                                        <td className="acc-detail-amount">{fmt(g.total)}</td>
+                                      </tr>
+                                      {catOpen && g.items.map(t => {
                                   const rowKey = txRowKey(t)
                                   const isEditing = editDraft?.key === rowKey
                                   const changed = isEditing && editDraft.category !== t.category
@@ -455,6 +490,9 @@ export default function AccView() {
                                           </td>
                                         </tr>
                                       )}
+                                    </Fragment>
+                                  )
+                                })}
                                     </Fragment>
                                   )
                                 })}
