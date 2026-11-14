@@ -171,6 +171,7 @@ export const WHATIF_FIELDS = [
   { key: 'wifeLateIncome',    label: '妻の65歳以降の年収',    unit: '円/年', target: 'work', who: 'wife', field: 'lateIncome' },
   { key: 'wifeLateUntil',     label: '妻が働くのをやめる年齢', unit: '歳',   target: 'work', who: 'wife', field: 'lateUntil' },
   { key: 'homeTotal',         label: '家の予算（土地＋建物）', unit: '円',  target: 'homeTotal' },
+  { key: 'cashBufferMonths',  label: '預金の上限（生活費の月数）', unit: 'か月', target: 'p' },
   { key: 'loanYears',         label: 'ローン期間',           unit: '年',   target: 'home' },
   { key: 'loanRate',          label: 'ローン金利',           unit: '%/年', target: 'home' },
   { key: 'downPayment',       label: '頭金',                 unit: '円',   target: 'home' },
