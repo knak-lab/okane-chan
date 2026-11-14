@@ -593,8 +593,8 @@ export default function SimTab() {
     insuranceReturn:   0,
   })
   const [expenseNote, setExpenseNote] = useState('過去24か月平均')
-  const [incomeNote, setIncomeNote]   = useState('年間タブの給与＋ボーナス')
-  const [yutoriNote, setYutoriNote]   = useState('年間タブの年額')
+  const [incomeNote, setIncomeNote]   = useState('設定タブの給与＋ボーナス')
+  const [yutoriNote, setYutoriNote]   = useState('設定タブの年額')
 
   const [loadStatus, setLoadStatus] = useState('idle')
   // AI診断で「データの過不足」を判断するための取得状況
@@ -748,10 +748,10 @@ export default function SimTab() {
       const plan = planRes?.plan
       const myIncome = ['収入_給与', '収入_ボーナス']
         .reduce((s, k) => s + (plan?.[k] || []).reduce((a, v) => a + (Number(v) || 0), 0), 0)
-      setIncomeNote(plan ? `年間タブ ${new Date().getFullYear()}年の給与＋ボーナス` : '年間タブに今年の計画がありません')
+      setIncomeNote(plan ? `設定タブ ${new Date().getFullYear()}年の給与＋ボーナス` : '設定タブに今年の計画がありません')
       // ときめき＋冒険: 年間タブの年額（4月列に総額が入っている）
       const yutoriAnnual = YUTORI_BUCKETS.reduce((s, name) => s + (Number(plan?.[`支出_${name}`]?.[3]) || 0), 0)
-      setYutoriNote(plan ? `年間タブ ${new Date().getFullYear()}年の年額` : '年間タブに今年の計画がありません')
+      setYutoriNote(plan ? `設定タブ ${new Date().getFullYear()}年の年額` : '設定タブに今年の計画がありません')
 
       // 年金: 最新レコード
       const pRecs = (pensionRes?.records || [])
@@ -1265,7 +1265,7 @@ export default function SimTab() {
         </div>
         <div className="sim-subhead">外貨保険 <span className="sim-section-note">保険ごとに、払込をやめる年と受け取る年を決める</span></div>
         {insPolicies.length === 0 ? (
-          <p className="sim-ef-note">外貨保険のデータがありません（データ再取得、またはサマリタブの外貨保険で登録）</p>
+          <p className="sim-ef-note">外貨保険のデータがありません（データ再取得、または資産タブの外貨保険で登録）</p>
         ) : (
           <div className="sim-events">
             <div className="sim-event-body sim-work">
@@ -1294,7 +1294,7 @@ export default function SimTab() {
                   <span className="sim-ef-note">
                     返戻金：{x.jpy > 0
                       ? `${x.endYear}年の ${fmt(x.jpy)}（$${Math.round(x.returnUsd).toLocaleString()}・${{ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値' }[x.method] || ''}）を${x.receiveYear > x.endYear ? `増やさずに${x.receiveYear}年に` : 'その年に'}受け取る`
-                      : '解約返戻金表がない（サマリタブの外貨保険で入力）'}
+                      : '解約返戻金表がない（資産タブの外貨保険で入力）'}
                   </span>
                 </div>
               ))}
@@ -1310,7 +1310,7 @@ export default function SimTab() {
       <Section icon="🧓" title="年金"
         summary={`夫婦で月${man1(totalPension)}（あなた${pensionStartAge}歳〜／妻${params.wifePensionStartAge}歳〜）`}>
         <div className="sim-fields">
-          <Field label="あなたの年金" unit="円 / 月" note="年金タブ（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
+          <Field label="あなたの年金" unit="円 / 月" note="資産タブの年金（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
           <Field label="あなたの受給開始" unit="歳" note="60〜75歳。65歳より遅いと1か月0.7%増、早いと0.4%減"
             value={params.pensionStartAge} onChange={setP('pensionStartAge')} />
           <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />

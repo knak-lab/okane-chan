@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { WHATIF_FIELDS, whatIfField, currentValue } from '../utils/lpChecks'
+import { goTo, GO_LABEL } from '../utils/nav'
 import './LPCheck.css'
 
 const ICON = { ng: '❌', warn: '⚠️', info: 'ℹ️' }
@@ -34,7 +35,12 @@ function CheckList({ items, okText }) {
     <ul className="lpc-list">
       {items.map((c, i) => (
         <li key={i} className={`lpc-item lpc-${c.level}`}>
-          <span className="lpc-icon">{ICON[c.level]}</span>{c.text}
+          <span className="lpc-icon">{ICON[c.level]}</span>
+          <span className="lpc-text">{c.text}
+            {c.go && GO_LABEL[c.go] && (
+              <button className="lpc-go" onClick={() => goTo(...c.go.split('/'))}>{GO_LABEL[c.go]} →</button>
+            )}
+          </span>
         </li>
       ))}
     </ul>

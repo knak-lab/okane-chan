@@ -28,41 +28,42 @@ export const EMERGENCY_MONTHS = 6      // 預金が生活費のこの月数を�
 export function dataChecks(lp) {
   const { params: p, vals: v, wife, events: ev, dataMeta: dm = {} } = lp
   const out = []
-  const add = (level, text) => out.push({ level, text })
+  // go: 直す場所（utils/nav の goTo に渡すタブ。'future/home' はサブタブ付き）
+  const add = (level, text, go) => out.push({ level, text, go })
 
   if (dm.failedFetches?.length) add('ng', `取得に失敗したデータ: ${dm.failedFetches.join('・')}`)
 
   // 資産
-  if (!v.cashAssets)   add('ng', '預金が0円（資産タブ未入力、または取得失敗）')
-  if (!v.dcAssets) add('warn', 'DC（退職金）の評価額が0円（DCの記録が未入力？）')
+  if (!v.cashAssets)   add('ng', '預金が0円（資産タブ未入力、または取得失敗）', 'assets')
+  if (!v.dcAssets) add('warn', 'DC（退職金）の評価額が0円（DCの記録が未入力？）', 'assets')
   for (const a of dm.assets || []) {
     const ago = monthsAgo(a.month)
-    if (ago != null && ago >= STALE_MONTHS) add('warn', `口座「${a.name}」の残高が${ago}か月前（${toYM(a.month)}）のまま`)
+    if (ago != null && ago >= STALE_MONTHS) add('warn', `口座「${a.name}」の残高が${ago}か月前（${toYM(a.month)}）のまま`, 'assets')
   }
   for (const f of [
     ...(dm.funds || []).map(x => ({ ...x, label: `投信「${x.name}」` })),
     ...(dm.dc || []).map(x => ({ ...x, label: `DC「${x.name}」` })),
   ]) {
     const ago = monthsAgo(f.month)
-    if (!f.month) add('warn', `${f.label}の評価額の記録がない`)
-    else if (ago >= STALE_MONTHS) add('warn', `${f.label}の評価額が${ago}か月前（${toYM(f.month)}）のまま`)
+    if (!f.month) add('warn', `${f.label}の評価額の記録がない`, 'assets')
+    else if (ago >= STALE_MONTHS) add('warn', `${f.label}の評価額が${ago}か月前（${toYM(f.month)}）のまま`, 'assets')
   }
 
   // 収入・支出
   if (!v.myIncome) add('ng', dm.hasAnnualPlan === false
-    ? 'あなたの手取り年収が0円（年間タブに今年の給与・ボーナス計画がない）'
-    : 'あなたの手取り年収が0円')
-  if (!v.monthlyExpense) add('ng', '生活費（安心＋彩り）が0円（取引データなし？）')
+    ? 'あなたの手取り年収が0円（設定タブに今年の給与・ボーナス計画がない）'
+    : 'あなたの手取り年収が0円', 'settings')
+  if (!v.monthlyExpense) add('ng', '生活費（安心＋彩り）が0円（取引データなし？）', 'input')
   else if (dm.expenseMonthsUsed != null && dm.expenseMonthsUsed < 12)
-    add('warn', `生活費の平均が${dm.expenseMonthsUsed}か月分しかない（季節の変動を拾いきれない）`)
-  if (!v.yutoriAnnual) add('warn', 'ときめき＋冒険（年額）が0円（年間タブ未入力？）')
+    add('warn', `生活費の平均が${dm.expenseMonthsUsed}か月分しかない（季節の変動を拾いきれない）`, 'input')
+  if (!v.yutoriAnnual) add('warn', 'ときめき＋冒険（年額）が0円（設定タブ未入力？）', 'settings')
   if (!p.monthlyRent && !(ev.home?.enabled && ev.home?.stopRent)) add('warn', '家賃が0円で、マイホームもオフ')
 
   // 年金・退職金
-  if (!v.pensionMonthly) add('ng', 'あなたの年金見込み額が0円（年金タブ未入力）')
+  if (!v.pensionMonthly) add('ng', 'あなたの年金見込み額が0円（資産タブの年金が未入力）', 'assets')
   else {
     const ago = monthsAgo(dm.pensionYearMonth)
-    if (ago != null && ago >= 12) add('warn', `年金見込み額の確認が${Math.floor(ago / 12)}年以上前（${dm.pensionYearMonth}）`)
+    if (ago != null && ago >= 12) add('warn', `年金見込み額の確認が${Math.floor(ago / 12)}年以上前（${dm.pensionYearMonth}）`, 'assets')
   }
   if (!p.wifePensionMonthly) add('warn', '妻の年金が0円（ねんきん定期便の見込み額が未入力）')
 
@@ -71,17 +72,17 @@ export function dataChecks(lp) {
   if (!Number(wife.base) && !stagesAdd) add('warn', '妻の手取り年収が基本・段階ともに0円')
 
   // 保険
-  if (dm.insurancePolicies && !v.insuranceReturn) add('warn', '保険はあるが返戻予定額が0円（解約返戻金テーブル未入力？）')
+  if (dm.insurancePolicies && !v.insuranceReturn) add('warn', '保険はあるが返戻予定額が0円（解約返戻金テーブル未入力？）', 'assets')
   for (const d of dm.insurance || []) {
-    if (d.method === 'none') add('warn', `保険「${d.name}」の解約返戻金表がない（サマリタブの外貨保険で入力）`)
-    else if (d.method === 'nostart') add('warn', `保険「${d.name}」は開始年月が未入力で、解約年度（何年目）を西暦に直せない（開始年月を入れるか、解約年度を西暦で入力）`)
+    if (d.method === 'none') add('warn', `保険「${d.name}」の解約返戻金表がない（資産タブの外貨保険で入力）`, 'assets')
+    else if (d.method === 'nostart') add('warn', `保険「${d.name}」は開始年月が未入力で、解約年度（何年目）を西暦に直せない（開始年月を入れるか、解約年度を西暦で入力）`, 'assets')
     else if (d.method === 'interp') add('info', `保険「${d.name}」は払込をやめる${d.endYear}年の返戻金が表になく、${d.from[0]}年と${d.from[1]}年から推計`)
     else if (d.method === 'nearest') add('warn', `保険「${d.name}」は払込をやめる${d.endYear}年が表の範囲外のため、${d.from[0]}年の値で代用`)
   }
   if (dm.usdJpyFallback && v.insuranceReturn) add('warn', '為替レートが取得できず USD/JPY=150 の仮値で換算')
 
   // ライフイベント
-  if (ev.home?.enabled && !ev.homestLinked) add('info', 'マイホームの価格・頭金は「家」タブと連携しておらず手入力値')
+  if (ev.home?.enabled && !ev.homestLinked) add('info', 'マイホームの価格・頭金は「家」と連携しておらず手入力値', 'future/home')
   for (const [k, label] of [['child1', '第1子'], ['child2', '第2子']]) {
     const c = ev[k]
     if (c?.enabled && Number(c.currentAge) >= 22) add('info', `${label}は${c.currentAge}歳で教育費の計算対象外`)

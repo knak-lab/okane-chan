@@ -11,29 +11,49 @@ import InsuranceSimulator from './components/InsuranceSimulator'
 import SimTab from './components/SimTab'
 import { isGasReady } from './utils/gasApi'
 import { syncRulesWithGas } from './utils/customRules'
+import { onGoTo } from './utils/nav'
 import OutboxBadge from './components/OutboxBadge'
 import { LockButton } from './auth/AuthGate'
 import './App.css'
 
+// 使う頻度で5つに分ける：毎日見る「今月」／月1回の「入力」「資産」／面談前後の「将来」／年初の「設定」
 const TABS = [
-  { id: 'acc',        label: 'acco' },
-  { id: 'assets',     label: 'サマリ' },
-  { id: 'dashboard',  label: '支払' },
-  { id: '__sep1',     sep: true },
-  { id: 'sim',        label: 'LP' },
-  { id: 'insurance',  label: '保険simu' },
-  { id: '__sep2',     sep: true },
-  { id: 'paypay',     label: 'CSV' },
-  { id: 'osaifu',     label: '財布' },
-  { id: '__sep3',     sep: true },
-  { id: 'annual',     label: '年間' },
-  { id: 'pj',         label: '家' },
-  { id: 'vacation',   label: '休暇' },
-  { id: 'catrules',   label: 'カテゴリ' },
+  { id: 'month',    label: '今月' },
+  { id: 'input',    label: '入力' },
+  { id: 'assets',   label: '資産' },
+  { id: 'future',   label: '将来' },
+  { id: 'settings', label: '設定' },
 ]
+const SUB_TABS = {
+  input: [
+    { id: 'csv',    label: 'CSV取込' },
+    { id: 'osaifu', label: '財布' },
+    { id: 'rules',  label: 'カテゴリルール' },
+  ],
+  future: [
+    { id: 'lp',   label: 'ライフプラン' },
+    { id: 'ins',  label: '保険の損益' },
+    { id: 'home', label: '家' },
+  ],
+}
+
+function SubTabs({ tab, active, onChange, badges = {} }) {
+  return (
+    <nav className="subtab-nav">
+      {SUB_TABS[tab].map(s => (
+        <button key={s.id} className={`subtab-btn ${active === s.id ? 'active' : ''}`} onClick={() => onChange(s.id)}>
+          {s.label}
+          {badges[s.id] > 0 && <span className="tab-badge">{badges[s.id]}</span>}
+        </button>
+      ))}
+    </nav>
+  )
+}
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('acc')
+  const [activeTab, setActiveTab] = useState('month')
+  const [subTab, setSubTab] = useState({ input: 'csv', future: 'lp' })
+  const [showPayDetail, setShowPayDetail] = useState(false)
   const [dashTransactions, setDashTransactions] = useState([])
   const [csvTransactions, setCsvTransactions]   = useState([])
 
@@ -41,6 +61,17 @@ export default function App() {
     if (!isGasReady()) return
     syncRulesWithGas().catch((e) => console.warn('[rules] sync failed', e))
   }, [])
+
+  // 他の画面からのタブ移動（LPチェックの「〇〇で直す」など）
+  useEffect(() => onGoTo(({ tab, sub }) => {
+    if (!TABS.some(t => t.id === tab)) return
+    setActiveTab(tab)
+    if (sub) setSubTab(s => ({ ...s, [tab]: sub }))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }), [])
+
+  const setSub = (tab) => (id) => setSubTab(s => ({ ...s, [tab]: id }))
+  const csvCount = csvTransactions.length
 
   return (
     <div className="app">
@@ -52,61 +83,52 @@ export default function App() {
       <OutboxBadge />
 
       <nav className="tab-nav">
-        {TABS.map((tab) =>
-          tab.sep ? (
-            <span key={tab.id} className="tab-sep">|</span>
-          ) : (
-            <button
-              key={tab.id}
-              className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-              {tab.id === 'paypay' && csvTransactions.length > 0 && (
-                <span className="tab-badge">{csvTransactions.length}</span>
-              )}
-            </button>
-          )
-        )}
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+            {tab.id === 'input' && csvCount > 0 && <span className="tab-badge">{csvCount}</span>}
+          </button>
+        ))}
       </nav>
 
       <main className="main-content">
-        {activeTab === 'dashboard' && (
-          <Dashboard transactions={dashTransactions} onLoad={setDashTransactions} />
+        {activeTab === 'month' && (
+          <>
+            <AccView />
+            {/* 予算と実績・内訳の詳細。開いたときだけ読み込む */}
+            <details className="pay-detail" open={showPayDetail}
+              onToggle={e => setShowPayDetail(e.currentTarget.open)}>
+              <summary>📋 支払の詳細（予算と実績・内訳・カテゴリ別一覧）</summary>
+              {showPayDetail && <Dashboard transactions={dashTransactions} onLoad={setDashTransactions} />}
+            </details>
+          </>
         )}
-        {activeTab === 'paypay' && (
-          <PayPayImport transactions={csvTransactions} onLoad={setCsvTransactions} />
+
+        {activeTab === 'input' && (
+          <>
+            <SubTabs tab="input" active={subTab.input} onChange={setSub('input')} badges={{ csv: csvCount }} />
+            {subTab.input === 'csv' && <PayPayImport transactions={csvTransactions} onLoad={setCsvTransactions} />}
+            {subTab.input === 'osaifu' && <OsaifuInput />}
+            {subTab.input === 'rules' && <CategoryRules />}
+          </>
         )}
-        {activeTab === 'assets' && (
-          <AssetSummary />
+
+        {activeTab === 'assets' && <AssetSummary />}
+
+        {activeTab === 'future' && (
+          <>
+            <SubTabs tab="future" active={subTab.future} onChange={setSub('future')} />
+            {subTab.future === 'lp' && <SimTab />}
+            {subTab.future === 'ins' && <InsuranceSimulator />}
+            {subTab.future === 'home' && <PJTab />}
+          </>
         )}
-        {activeTab === 'osaifu' && (
-          <OsaifuInput />
-        )}
-        {activeTab === 'acc' && (
-          <AccView />
-        )}
-        {activeTab === 'annual' && (
-          <AnnualPlan />
-        )}
-        {activeTab === 'pj' && (
-          <PJTab />
-        )}
-        {activeTab === 'vacation' && (
-          <div className="coming-soon">
-            <span className="coming-soon-icon">🏖️</span>
-            <p className="coming-soon-text">Coming Soon</p>
-          </div>
-        )}
-        {activeTab === 'catrules' && (
-          <CategoryRules />
-        )}
-        {activeTab === 'insurance' && (
-          <InsuranceSimulator />
-        )}
-        {activeTab === 'sim' && (
-          <SimTab />
-        )}
+
+        {activeTab === 'settings' && <AnnualPlan />}
       </main>
     </div>
   )

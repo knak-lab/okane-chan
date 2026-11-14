@@ -37,6 +37,18 @@
   gap: 0.35rem;
 }
 .lpc-icon { flex-shrink: 0; }
+.lpc-go {
+  margin-left: 6px;
+  padding: 1px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #F47920;
+  background: #fff;
+  border: 1px solid #F47920;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
 .lpc-ng   { background: #fdecea; }
 .lpc-warn { background: #fff6e5; }
 .lpc-info { background: #f2f5fb; }
