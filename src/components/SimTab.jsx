@@ -4,7 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
-import { surrenderAtYears } from '../utils/insuranceUtils'
+import { surrenderAtYears, BIRTH_YEAR, defaultPayEndYear } from '../utils/insuranceUtils'
 import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
@@ -22,7 +22,6 @@ const EDU_COST = {
   'オール私立':                 23_000_000,
 }
 const EDU_KEYS = Object.keys(EDU_COST)
-const BIRTH_YEAR = 1984  // 2026年 = 42歳
 const SETTINGS_TYPE = 'LP設定'  // PJデータシートの種別名
 const SETTINGS_STATUS_LABEL = {
   loading: '設定を読込中…',
@@ -123,12 +122,6 @@ const DEFAULT_WORK = {
   me:   { raiseStopAge: 55, reducedFrom: 60, reducedRate: 50,  lateFrom: 65, lateUntil: 70, lateIncome: 0 },
   wife: { raiseStopAge: 55, reducedFrom: 60, reducedRate: 100, lateFrom: 65, lateUntil: 70, lateIncome: 0 },
 }
-// 外貨保険の払込終了年の初期値（LP設定に保存した値があればそちらを使う）
-// kkr の保険はあなたが60歳になる年まで、acco の保険は5年後まで（2026年11月に聞いた内容）
-function defaultPayEndYear(name, thisYear, currentAge) {
-  return /acco/i.test(name) ? thisYear + 5 : thisYear + (60 - currentAge)
-}
-
 // baseNow: 今の金額での手取り年収（妻は子どもの年齢による段階を反映した額）
 function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
   if (age >= Number(w.lateUntil)) return 0
@@ -149,7 +142,7 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
   '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
-  '外貨保険は保険ごとに、払込をやめる年まで年払いの保険料を払い、返戻金はその年の解約返戻金表（保険simu）の金額で確定。受け取る年まで増やさずに一括で受け取る（今の為替レートで円換算。税金は考慮していない）',
+  '外貨保険は保険ごとに、払込をやめる年まで年払いの保険料を払い、返戻金はその年の解約返戻金表（保険simu）の金額で確定。受け取る年まで増やさずに一括で受け取る（今の為替レートで円換算。税金は考慮していない）。受け取るまでも、その年に解約したらもらえる額を資産に数える',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
@@ -169,7 +162,7 @@ function runSim(p, events) {
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
           insuranceLumps = [], retireExpenseRate = 100,
           fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
-          work = DEFAULT_WORK, insurancePremiums = [] } = p
+          work = DEFAULT_WORK, insurancePremiums = [], insuranceValues = {} } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -187,7 +180,9 @@ function runSim(p, events) {
     : 0
 
   for (let age = startAge; age <= endAge; age++) {
-    data.push({ age, assets: Math.round(cash + invest + dc), cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc) })
+    // 外貨保険は受け取るまで「今解約したらもらえる額」を資産に数える（いつでも解約できるため）
+    const ins = insuranceValues[age] || 0
+    data.push({ age, assets: Math.round(cash + invest + dc + ins), cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc), ins: Math.round(ins) })
 
     const t          = age - startAge
     const infl       = (1 + (inflationRate || 0) / 100) ** t
@@ -413,6 +408,7 @@ const SERIES = [
   { key: 'cash',   name: '預金',       color: '#2a78d6' },
   { key: 'invest', name: '投資（投信）', color: '#eb6834' },
   { key: 'dc',     name: 'DC（退職金）', color: '#1baf7a' },
+  { key: 'ins',    name: '外貨保険',     color: '#eda100' },
 ]
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -767,6 +763,24 @@ export default function SimTab() {
     })
   }, [insData, insPayEnd, insReceive, params.currentAge])
   const insuranceReturnTotal = insPolicies.reduce((t, x) => t + x.jpy, 0)
+  // 年齢ごとの外貨保険の資産価値（受け取る年まで）。払込中はその年の表の値、払込をやめたあとは確定した金額
+  const insuranceValues = useMemo(() => {
+    if (!insData || !insPolicies.length) return {}
+    const thisYear = new Date().getFullYear()
+    const lastYear = Math.max(...insPolicies.map(x => x.receiveYear))
+    const byName = Object.fromEntries(insPolicies.map(x => [x.name, x]))
+    const out = {}
+    for (let y = thisYear; y <= lastYear; y++) {
+      const rows = surrenderAtYears(insData, name => Math.min(y, byName[name]?.endYear ?? y))
+      const jpy = rows.reduce((t, d) => {
+        const pol = byName[d.name]
+        return pol && y <= pol.receiveYear ? t + d.usd * insData.usdJpy : t
+      }, 0)
+      if (jpy > 0) out[params.currentAge + (y - thisYear)] = Math.round(jpy)
+    }
+    return out
+  }, [insData, insPolicies, params.currentAge])
+  const insuranceValueNow = insuranceValues[params.currentAge] || 0
   // 合計は LPチェック・AI相談・資産の要約で使う
   useEffect(() => { setVals(v => (v.insuranceReturn === insuranceReturnTotal ? v : { ...v, insuranceReturn: insuranceReturnTotal })) }, [insuranceReturnTotal])
 
@@ -801,7 +815,8 @@ export default function SimTab() {
     retireExpenseRate: params.retireExpenseRate,
     work,
     insurancePremiums: insPolicies.filter(x => x.times > 0),
-  }), [params, vals, wife, work, insPolicies])
+    insuranceValues,
+  }), [params, vals, wife, work, insPolicies, insuranceValues])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
   // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
@@ -824,7 +839,7 @@ export default function SimTab() {
   // 積み上げは0未満を描かない（預金がマイナスの年は合計の線が積み上げより下に来る）
   const chartData = useMemo(() =>
     sim.map(d => ({
-      age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), dc: Math.max(0, d.dc),
+      age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), dc: Math.max(0, d.dc), ins: Math.max(0, d.ins || 0),
       total: Math.max(0, d.assets), raw: d,
     })),
     [sim])
@@ -1087,7 +1102,7 @@ export default function SimTab() {
       </Section>
 
       <Section icon="🏦" title="資産と積立"
-        summary={`預金${man(vals.cashAssets)}・投信${man(vals.fundAssets)}・DC${man(vals.dcAssets)}・保険${man(vals.insuranceReturn)}`}>
+        summary={`預金${man(vals.cashAssets)}・投信${man(vals.fundAssets)}・DC${man(vals.dcAssets)}・保険${man(insuranceValueNow)}`}>
         <div className="sim-fields">
           <Field label="預金" unit="円" note="預金金利で増える" fetched wide value={vals.cashAssets} onChange={setV('cashAssets')} />
           <Field label="投資信託" unit="円" note="評価額。預金が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
@@ -1140,7 +1155,8 @@ export default function SimTab() {
                 </div>
               ))}
               <p className="sim-ef-note">
-                返戻金の合計 {fmt(insuranceReturnTotal)}。金額は払込をやめた年の解約返戻金表（保険simu）の値で決まり、受け取るまでは増えない前提です。今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。
+                今解約した場合 {fmt(insuranceValueNow)}／受け取る返戻金の合計 {fmt(insuranceReturnTotal)}。受け取るまでも「今解約したらもらえる額」を資産に数えます（資産推移の黄色）。
+                金額は払込をやめた年の解約返戻金表（保険simu）の値で決まり、受け取るまでは増えない前提です。今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。
               </p>
             </div>
           </div>
