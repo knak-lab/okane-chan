@@ -890,7 +890,11 @@ function buildLPContext(d) {
     '- 外貨保険の返戻予定 ' + yen(v.insuranceReturn) + '（' + (dm.insurancePolicies || 0) + '件、' + p.insuranceAge + '歳で解約して一括。今の為替で円換算）\n' +
     lines((dm.insurance || []).map(function(x) {
       return '  ' + x.name + ': ' + x.receiveYear + '年に受け取り ' + yen(x.jpy) + '（' + ({ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値', none: '表なし', nostart: '開始年月がなく計算できない' }[x.method] || '') + '）'
-    }), '') + '\n\n' +
+    }), '') + '\n' +
+    lines((dm.premiums || []).map(function(x) {
+      return '  年払い ' + x.name + ': 年' + yen(x.annual) + '（$' + x.usd + '）を' + x.endYear + '年まで払込。' +
+        (x.times > 0 ? x.startYear + '〜' + x.lastYear + '年の' + x.times + '回・計' + yen(x.total) + '（解約年まで）' : 'もう払わない')
+    }), '  年払いの保険料：データなし') + '\n\n' +
     '# 口座別残高\n' + detail(dm.assets) + '\n\n' +
     '# 投資信託\n' + detail(dm.funds) + '\n\n' +
     '# 企業型DC\n' + detail(dm.dc) + '\n\n' +
