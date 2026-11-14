@@ -110,3 +110,27 @@ export function surrenderAtYears({ masters = [], surrenderValues = [] }, yearOf)
     return { name, receiveYear, usd: near.usd, method: 'nearest', from: [near.cal] }
   })
 }
+
+// あなたの生年（LPタブと保険simuで共通）
+export const BIRTH_YEAR = 1984
+
+// 外貨保険の払込をやめる年の初期値（LP設定に保存した値があればそちらを使う）
+// kkr の保険はあなたが60歳になる年まで、acco の保険は5年後まで（2026年11月に聞いた内容）
+export function defaultPayEndYear(name, thisYear, currentAge) {
+  return /acco/i.test(name) ? thisYear + 5 : thisYear + (60 - currentAge)
+}
+
+// LP設定（insPayEnd / insReceive）から、その保険の「実際に払込をやめる年」を返す。
+// 受け取る年を払込をやめる年より前にしていれば、受け取る年で払込もやめる
+export function effectivePayEndYear(name, lpSettings, thisYear, currentAge) {
+  const payEnd = Math.max(thisYear, Number(lpSettings?.insPayEnd?.[name] ?? defaultPayEndYear(name, thisYear, currentAge)) || thisYear)
+  const receive = Math.max(thisYear, Number(lpSettings?.insReceive?.[name] ?? payEnd) || payEnd)
+  return Math.min(payEnd, receive)
+}
+
+// 今年の年払い記録があれば今年分は払い済みとして、次に払う年を返す
+export function nextUnpaidYear(name, payments, thisYear) {
+  const paid = (payments || []).some(p => (p['保険名'] ?? p.name) === name
+    && String(p['年月'] ?? p.yearMonth ?? '').replace('/', '-').startsWith(String(thisYear)))
+  return paid ? thisYear + 1 : thisYear
+}

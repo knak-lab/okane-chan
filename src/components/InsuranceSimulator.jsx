@@ -1,15 +1,29 @@
 import { useState, useEffect } from 'react'
 import { gasApi, isGasReady } from '../utils/gasApi'
-import { fromGas, calcCumulativeJPY, surrenderYearLabel } from '../utils/insuranceUtils'
+import { fromGas, calcCumulativeJPY, surrenderYearLabel, isCalendarYear, BIRTH_YEAR, effectivePayEndYear, nextUnpaidYear } from '../utils/insuranceUtils'
 import './InsuranceSimulator.css'
 
 const fmt    = (v) => v === 0 ? '¥0' : `¥${Math.round(v).toLocaleString()}`
 const fmtUSD = (v) => { const n = parseFloat(v); return isNaN(n) ? '—' : `$${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}` }
 
-function SimCard({ ins, rate }) {
+// 損益 ＝ 返戻（円）−（これまでに払った額 ＋ その年度までに払う予定の保険料）
+// 予定の保険料は「年払い額(USD) × 今の為替」を、次に払う年から min(その年度, LPタブの払込をやめる年) まで
+function SimCard({ ins, rate, lpSettings }) {
   const cumJPY      = calcCumulativeJPY(ins.payments, rate)
-  const annualJPY   = parseFloat(ins.annualPremiumUSD) * rate
+  const annualUSD   = parseFloat(ins.annualPremiumUSD) || 0
+  const annualJPY   = annualUSD * rate
   const sorted      = [...ins.surrenderValues].sort((a, b) => Number(a.year) - Number(b.year))
+  const thisYear    = new Date().getFullYear()
+  const payEnd      = effectivePayEndYear(ins.name, lpSettings, thisYear, thisYear - BIRTH_YEAR)
+  const nextPay     = nextUnpaidYear(ins.name, ins.payments.map(p => ({ name: ins.name, yearMonth: p.yearMonth })), thisYear)
+  const startYear   = parseInt(String(ins.startMonth || '').split(/[/-]/)[0]) || null
+  const calYear     = (y) => (isCalendarYear(y) ? Number(y) : (startYear ? startYear + Number(y) : null))
+  const plannedJPY  = (y) => {
+    const cy = calYear(y)
+    if (cy == null) return null
+    return Math.max(0, Math.min(cy, payEnd) - nextPay + 1) * annualJPY
+  }
+  const sign = (v) => (v >= 0 ? '+' : '−') + fmt(Math.abs(v))
 
   return (
     <div className="sim-card">
@@ -17,6 +31,7 @@ function SimCard({ ins, rate }) {
         <span className="sim-card-name">{ins.name || '—'}</span>
         <span className="sim-card-meta">開始: {ins.startMonth || '—'}</span>
         <span className="sim-card-meta">年払い: {fmtUSD(ins.annualPremiumUSD)} = {rate ? fmt(annualJPY) : '—'}</span>
+        <span className="sim-card-meta">払込は{payEnd}年まで（LPタブの設定）</span>
       </div>
 
       <div className="sim-cumulative">
@@ -31,6 +46,7 @@ function SimCard({ ins, rate }) {
             <thead>
               <tr>
                 <th>解約年度</th>
+                <th className="r">支払計（予定込）</th>
                 <th className="r">一括返戻 (USD)</th>
                 <th className="r">一括返戻 (円)</th>
                 <th className="r">損益 (一括)</th>
@@ -47,21 +63,25 @@ function SimCard({ ins, rate }) {
                 const instYrs    = parseFloat(s.installmentYears) || 0
                 const instTotal  = instAmt * instYrs
                 const instJPY    = instTotal * rate
-                const plLump     = lumpJPY - cumJPY
-                const plInst     = instJPY - cumJPY
+                const planned    = plannedJPY(s.year)
+                const costJPY    = planned == null ? null : cumJPY + planned
+                const plLump     = costJPY == null ? null : lumpJPY - costJPY
+                const plInst     = costJPY == null ? null : instJPY - costJPY
+                const isPayEnd   = calYear(s.year) === payEnd
                 const hasInst    = instAmt > 0 && instYrs > 0
                 return (
-                  <tr key={s.id}>
-                    <td className="sim-year">{s.year ? surrenderYearLabel(s.year) : '—'}</td>
+                  <tr key={s.id} className={isPayEnd ? 'sim-row-payend' : undefined}>
+                    <td className="sim-year">{s.year ? surrenderYearLabel(s.year) : '—'}{isPayEnd && <span className="sim-payend-tag">払込終了</span>}</td>
+                    <td className="r sim-jpy">{rate && costJPY != null ? fmt(costJPY) : '—'}</td>
                     <td className="r sim-usd">{fmtUSD(lumpUSD)}</td>
                     <td className="r sim-jpy">{rate ? fmt(lumpJPY) : '—'}</td>
                     <td className={`r sim-pl ${plLump >= 0 ? 'sim-pl--pos' : 'sim-pl--neg'}`}>
-                      {rate && cumJPY > 0 ? (plLump >= 0 ? '▲' : '▼') + fmt(Math.abs(plLump)) : '—'}
+                      {rate && plLump != null && costJPY > 0 ? sign(plLump) : '—'}
                     </td>
                     <td className="r sim-usd">{hasInst ? fmtUSD(instTotal) : '—'}</td>
                     <td className="r sim-jpy">{hasInst && rate ? fmt(instJPY) : '—'}</td>
                     <td className={`r sim-pl ${plInst >= 0 ? 'sim-pl--pos' : 'sim-pl--neg'}`}>
-                      {hasInst && rate && cumJPY > 0 ? (plInst >= 0 ? '▲' : '▼') + fmt(Math.abs(plInst)) : '—'}
+                      {hasInst && rate && plInst != null && costJPY > 0 ? sign(plInst) : '—'}
                     </td>
                   </tr>
                 )
@@ -83,14 +103,19 @@ export default function InsuranceSimulator() {
   const [rateMsg,      setRateMsg]      = useState('')
   const [loadStatus,   setLoadStatus]   = useState('idle')
   const [loadMsg,      setLoadMsg]      = useState('')
+  const [lpSettings,   setLpSettings]   = useState(null) // LPタブの払込をやめる年・受け取る年
 
   useEffect(() => { if (isGasReady()) handleLoad() }, [])
 
   const handleLoad = async () => {
     setLoadStatus('loading'); setLoadMsg('')
     try {
-      const data = await gasApi.getInsurances()
+      const [data, lp] = await Promise.all([
+        gasApi.getInsurances(),
+        gasApi.getPJData('LP設定').catch(() => null),
+      ])
       setInsurances(fromGas(data))
+      setLpSettings(lp?.data || null)
       setLoadStatus('done')
       setLoadMsg(`${(data.masters || []).length}件`)
     } catch (e) {
@@ -170,7 +195,7 @@ export default function InsuranceSimulator() {
       {insurances.length > 0 && currentRate > 0 && (
         <div className="sim-cards">
           {insurances.map(ins => (
-            <SimCard key={ins.id} ins={ins} rate={currentRate} />
+            <SimCard key={ins.id} ins={ins} rate={currentRate} lpSettings={lpSettings} />
           ))}
         </div>
       )}

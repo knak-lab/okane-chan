@@ -251,3 +251,15 @@
   .sim-summary-val  { font-size: 1.1rem; }
   .sim-card-meta    { display: none; }
 }
+
+/* LPタブで決めた「払込をやめる年」の行 */
+.sim-row-payend { background: #fff8e6; }
+.sim-payend-tag {
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #b45309;
+  background: #fdecc8;
+  border-radius: 4px;
+  padding: 0 0.3rem;
+}
