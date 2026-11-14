@@ -130,6 +130,12 @@ export function planChecks(lp) {
   const low = (r.series || []).find(d => d.age < p.retireAge && d.cash < living6)
   if (low && living6 > 0) add('warn', `${low.age}歳で預金が ${yen(low.cash)} になり、生活費${EMERGENCY_MONTHS}か月分（${yen(living6)}）を下回る`)
 
+  const premiumLeft = (lp.dataMeta?.premiums || []).filter(x => x.times > 0)
+  if (premiumLeft.length) {
+    const total = premiumLeft.reduce((s, x) => s + x.total, 0)
+    const last = Math.max(...premiumLeft.map(x => x.lastYear))
+    add('info', `外貨保険の保険料が、${last}年までにあと合計 約${man(total)}（${premiumLeft.map(x => `${x.name} 年${yen(x.annual)}`).join('・')}）。今の為替で計算`)
+  }
   if (v.insuranceReturn && Number(p.insuranceAge) <= p.retireAge && r.retireAssets > 0 && v.insuranceReturn / r.retireAssets >= 0.3)
     add('info', `退職直前の資産の${Math.round(v.insuranceReturn / r.retireAssets * 100)}%が、${p.insuranceAge}歳で受け取る保険返戻金（${yen(v.insuranceReturn)}）。為替で大きく動く`)
 

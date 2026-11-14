@@ -389,3 +389,5 @@
   vertical-align: 1px;
   align-self: flex-start;
 }
+
+.sim-mini-input--year { width: 4.2em; }
