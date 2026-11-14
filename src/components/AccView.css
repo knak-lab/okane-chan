@@ -390,3 +390,10 @@
   margin-right: 8px;
   white-space: nowrap;
 }
+
+/* 明細のカテゴリ見出し（押すとそのカテゴリの取引を開閉） */
+.acc-cat-row { cursor: pointer; background: #F8FAFC; }
+.acc-cat-row td { font-weight: 700; color: #334155; }
+.acc-cat-row:hover { background: #F1F5F9; }
+.acc-cat-row--open td { border-bottom-color: #E2E8F0; }
+.acc-cat-count { margin-left: 0.4rem; font-size: 0.7rem; font-weight: 400; color: #94A3B8; }
