@@ -153,9 +153,10 @@ const MODEL_ASSUMPTIONS = [
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
-  '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
+  '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
-  '住宅ローン控除・固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
+  '住宅ローン控除は「年末のローン残高（借入限度額まで）× 0.7%」を購入から13年間、税金が戻る収入として入れる（払う税金より多くは戻らない点は考えていない）。固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
+  '預金は生活費の○か月分（預金の上限）を超えた分を、毎年投信に回す（0にすると回さない）',
   '相続・贈与・親の援助や介護、iDeCo/NISAの税制差は入っていない',
   '家賃は購入しない限り老後もずっと同額（物価上昇分は上がる）',
 ]
@@ -167,7 +168,8 @@ function runSim(p, events) {
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
           insuranceLumps = [], retireExpenseRate = 100,
           fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
-          work = DEFAULT_WORK, insurancePremiums = [], insuranceValues = {} } = p
+          work = DEFAULT_WORK, insurancePremiums = [], insuranceValues = {},
+          cashBufferMonths = 0, childAllowance = true } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -222,10 +224,13 @@ function runSim(p, events) {
 
     // ライフイベントコスト
     let eventCost = 0
+    let allowance = 0  // 児童手当・住宅ローン控除（税金が戻る分）など、制度で入ってくるお金
     if (events) {
       for (const child of [events.child1, events.child2]) {
         if (!child.enabled) continue
         const childAge = child.currentAge + t
+        // 児童手当（2024年10月からの制度。所得制限なし）：0〜2歳 月1.5万、3〜18歳 月1万
+        if (childAllowance && childAge >= 0 && childAge <= 18) allowance += (childAge < 3 ? 15_000 : 10_000) * 12
         if (childAge >= 6 && childAge < 22) {
           eventCost += EDU_COST[child.edu] / 16 * infl
         }
@@ -251,6 +256,12 @@ function runSim(p, events) {
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
         if (t === bought) eventCost += Number(home.downPayment) + homePrice(home) * Number(home.feeRate) / 100
         if (t >= bought && t < bought + Number(home.loanYears)) eventCost += homeLoan
+        // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
+        const deductYears = Number(home.deductYears ?? 13)
+        if (t >= bought && t < bought + deductYears) {
+          const balance = loanBalance(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears), t - bought + 1)
+          allowance += Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
+        }
         if (t >= bought) {
           eventCost += Number(home.monthlyCost) * 12 * infl
           // 購入後は家賃が不要になる分、手元に残る
@@ -281,7 +292,7 @@ function runSim(p, events) {
     }
 
     invest += Math.max(0, invest) * rInvest + fundInvest + extra
-    cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay
+    cash   += Math.max(0, cash) * rCash + annualIncome + allowance - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay
     // 足りないときに崩す順番：預金 → 投信 → 外貨保険（一部解約）。DCは受け取るまで崩せない
     if (cash < 0 && invest > 0) {
       const draw = Math.min(invest, -cash)
@@ -294,7 +305,14 @@ function runSim(p, events) {
       insFactor *= 1 - draw / insNext
       cash += draw
     }
+    // 預金の上限：生活費の○か月分を超えた預金は投信へ回す（寝かせておかない）
+    const buffer = annualExpense / 12 * (Number(cashBufferMonths) || 0)
+    if (Number(cashBufferMonths) > 0 && cash > buffer) {
+      invest += cash - buffer
+      cash = buffer
+    }
     data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
+    data[data.length - 1].allowance = Math.round(allowance)
   }
   return data
 }
@@ -554,6 +572,8 @@ export default function SimTab() {
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
     minMonths:       6,     // 合格ライン：手元のお金が生活費の何か月分を割らないか
+    cashBufferMonths: 12,   // 預金の上限：生活費の何か月分を超えたら投信へ回すか（0で回さない）
+    childAllowance:  true,  // 児童手当を収入に入れる
     targetAtEnd:     0,     // 合格ライン：想定寿命の年に残したい額（使えるお金）
     dcReceiveAge:    60,    // DC（退職金）を受け取る年齢
     dcMode:          'lump', // DCの受け取り方：lump（一時金）| annuity（年金）
@@ -600,6 +620,7 @@ export default function SimTab() {
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
     landGrowth: 0, buildingLife: 30, buildingResidual: 0,  // 家の価値：土地の値上がり率（%/年）、建物の耐用年数・残存割合（%）
+    deductLimit: 30_000_000, deductYears: 13,               // 住宅ローン控除：借入限度額（省エネ基準の新築 3,000万）・控除期間
   })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
@@ -876,6 +897,8 @@ export default function SimTab() {
     work,
     insurancePremiums: insPolicies.filter(x => x.times > 0),
     insuranceValues,
+    cashBufferMonths: params.cashBufferMonths,
+    childAllowance:  params.childAllowance,
   }), [params, vals, wife, work, insPolicies, insuranceValues])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
@@ -1226,6 +1249,8 @@ export default function SimTab() {
           <Field label="預金" unit="円" note="預金金利で増える" fetched wide value={vals.cashAssets} onChange={setV('cashAssets')} />
           <Field label="投資信託" unit="円" note="評価額。預金が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
           <Field label="投信積立" unit="円 / 月" note="手取りから。定年まで" fetched wide value={vals.monthlyFundInvest} onChange={setV('monthlyFundInvest')} />
+          <Field label="預金の上限" unit="か月分" note="生活費のこの月数を超えた預金は、毎年投信へ回す（0で回さない）"
+            value={params.cashBufferMonths} onChange={setP('cashBufferMonths')} />
         </div>
         <div className="sim-subhead">DC（企業型確定拠出年金）＝退職金 <span className="sim-section-note">受け取るまでは取り崩せない</span></div>
         <div className="sim-fields">
@@ -1300,6 +1325,13 @@ export default function SimTab() {
         <div className="sim-events">
           <ChildEvent label="👶 子供1" state={child1} onChange={setChild1} />
           <ChildEvent label="👶 子供2" state={child2} onChange={setChild2} />
+          {(child1.enabled || child2.enabled) && (
+            <label className="sim-ef sim-ef--check">
+              <input type="checkbox" checked={params.childAllowance !== false}
+                onChange={e => setParams(p => ({ ...p, childAllowance: e.target.checked }))} />
+              <span className="sim-ef-label">児童手当を収入に入れる（0〜2歳 月1.5万・3〜18歳 月1万）</span>
+            </label>
+          )}
 
           <div className="sim-event">
             <button
@@ -1420,6 +1452,10 @@ export default function SimTab() {
                   value={home.buildingLife} onChange={v => setHome(p => ({ ...p, buildingLife: v }))} />
                 <EventNumField label="建物の残存割合" unit="%（耐用年数後に残る価値）"
                   value={home.buildingResidual} onChange={v => setHome(p => ({ ...p, buildingResidual: v }))} />
+                <EventNumField label="ローン控除の借入限度額" unit="円（省エネ3,000万・ZEH3,500万・長期優良4,500万、子育て世帯は上乗せ。0で控除なし）" wide
+                  value={home.deductLimit ?? 30_000_000} onChange={v => setHome(p => ({ ...p, deductLimit: v }))} />
+                <EventNumField label="ローン控除の期間" unit="年（新築は13年）"
+                  value={home.deductYears ?? 13} onChange={v => setHome(p => ({ ...p, deductYears: v }))} />
                 <label className="sim-ef sim-ef--check">
                   <input type="checkbox" checked={home.stopRent}
                     onChange={e => setHome(p => ({ ...p, stopRent: e.target.checked }))} />
