@@ -75,8 +75,8 @@ export function dataChecks(lp) {
   for (const d of dm.insurance || []) {
     if (d.method === 'none') add('warn', `保険「${d.name}」の解約返戻金表がない（サマリタブの外貨保険で入力）`)
     else if (d.method === 'nostart') add('warn', `保険「${d.name}」は開始年月が未入力で、解約年度（何年目）を西暦に直せない（開始年月を入れるか、解約年度を西暦で入力）`)
-    else if (d.method === 'interp') add('info', `保険「${d.name}」は${p.insuranceAge}歳（${d.receiveYear}年）の返戻金が表になく、${d.from[0]}年と${d.from[1]}年から推計`)
-    else if (d.method === 'nearest') add('warn', `保険「${d.name}」は${p.insuranceAge}歳（${d.receiveYear}年）が表の範囲外のため、${d.from[0]}年の値で代用`)
+    else if (d.method === 'interp') add('info', `保険「${d.name}」は払込をやめる${d.endYear}年の返戻金が表になく、${d.from[0]}年と${d.from[1]}年から推計`)
+    else if (d.method === 'nearest') add('warn', `保険「${d.name}」は払込をやめる${d.endYear}年が表の範囲外のため、${d.from[0]}年の値で代用`)
   }
   if (dm.usdJpyFallback && v.insuranceReturn) add('warn', '為替レートが取得できず USD/JPY=150 の仮値で換算')
 
@@ -136,8 +136,9 @@ export function planChecks(lp) {
     const last = Math.max(...premiumLeft.map(x => x.lastYear))
     add('info', `外貨保険の保険料が、${last}年までにあと合計 約${man(total)}（${premiumLeft.map(x => `${x.name} 年${yen(x.annual)}`).join('・')}）。今の為替で計算`)
   }
-  if (v.insuranceReturn && Number(p.insuranceAge) <= p.retireAge && r.retireAssets > 0 && v.insuranceReturn / r.retireAssets >= 0.3)
-    add('info', `退職直前の資産の${Math.round(v.insuranceReturn / r.retireAssets * 100)}%が、${p.insuranceAge}歳で受け取る保険返戻金（${yen(v.insuranceReturn)}）。為替で大きく動く`)
+  const insBeforeRetire = (lp.dataMeta?.insurance || []).filter(x => x.receiveAge < p.retireAge).reduce((s, x) => s + (x.jpy || 0), 0)
+  if (insBeforeRetire && r.retireAssets > 0 && insBeforeRetire / r.retireAssets >= 0.3)
+    add('info', `退職直前の資産の${Math.round(insBeforeRetire / r.retireAssets * 100)}%が、定年までに受け取る保険返戻金（${yen(insBeforeRetire)}）。為替で大きく動く`)
 
   return out
 }

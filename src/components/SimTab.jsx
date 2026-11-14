@@ -4,7 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { gasApi, isGasReady } from '../utils/gasApi'
-import { surrenderAtAge } from '../utils/insuranceUtils'
+import { surrenderAtYears } from '../utils/insuranceUtils'
 import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
@@ -149,7 +149,7 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
   '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
-  '外貨保険は「保険の受け取り年齢」で解約して一括で受け取る（保険simuの解約返戻金表、今の為替レートで円換算。税金は考慮していない）。年払いの保険料は払込終了年まで（解約する年まで）毎年、今の為替で円換算した額を払う',
+  '外貨保険は保険ごとに、払込をやめる年まで年払いの保険料を払い、返戻金はその年の解約返戻金表（保険simu）の金額で確定。受け取る年まで増やさずに一括で受け取る（今の為替レートで円換算。税金は考慮していない）',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
@@ -167,7 +167,7 @@ function runSim(p, events) {
           returnRate, cashRate, inflationRate, incomeGrowth, myIncome, wife,
           monthlyFundInvest, monthlyDCInvest, extraSaving = 0, monthlyExpense, monthlyRent,
           yutoriAnnual, pensionMonthly, wifeAge, wifePensionMonthly, wifePensionStartAge,
-          insuranceReturn, insuranceAge = retireAge, retireExpenseRate = 100,
+          insuranceLumps = [], retireExpenseRate = 100,
           fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
           work = DEFAULT_WORK, insurancePremiums = [] } = p
   if (endAge < startAge) return []
@@ -250,8 +250,8 @@ function runSim(p, events) {
       }
     }
 
-    // 保険返戻金は受け取り年齢で一括加算
-    const lump = age === Number(insuranceAge) && insuranceReturn > 0 ? insuranceReturn : 0
+    // 外貨保険の解約返戻金は、保険ごとの受け取る年（＝払込終了年）に一括加算
+    const lump = insuranceLumps.reduce((sum, x) => sum + (age === x.age ? x.amount : 0), 0)
     // 外貨保険の年払い（払い終わるまで。今の為替で円換算した額のまま）
     const premium = insurancePremiums.reduce((sum, x) => sum + (age >= x.fromAge && age <= x.toAge ? x.annual : 0), 0)
 
@@ -503,7 +503,6 @@ export default function SimTab() {
     dcReceiveAge:    60,    // DC（退職金）を受け取る年齢
     dcMode:          'lump', // DCの受け取り方：lump（一時金）| annuity（年金）
     dcYears:         10,    // 年金で受け取るときの年数
-    insuranceAge:    60,    // 外貨保険を解約して受け取る年齢
   })
 
   const [vals, setVals] = useState({
@@ -525,16 +524,8 @@ export default function SimTab() {
   const [loadStatus, setLoadStatus] = useState('idle')
   // AI診断で「データの過不足」を判断するための取得状況
   const [dataMeta,   setDataMeta]   = useState({})
-  // 外貨保険の解約返戻金表と為替（取得データ）。受け取り年齢が変わるたびに返戻予定額を計算し直す
+  // 外貨保険の解約返戻金表・年払い記録と為替（取得データ）。保険ごとの計算は下の insPolicies
   const [insData,    setInsData]    = useState(null)
-  const [insDetail,  setInsDetail]  = useState([])
-  useEffect(() => {
-    if (!insData) return
-    const detail = surrenderAtAge(insData, Number(params.insuranceAge), params.currentAge)
-    const usd = detail.reduce((t, d) => t + d.usd, 0)
-    setInsDetail(detail.map(d => ({ ...d, jpy: Math.round(d.usd * insData.usdJpy) })))
-    setVals(v => ({ ...v, insuranceReturn: Math.round(usd * insData.usdJpy) }))
-  }, [insData, params.insuranceAge, params.currentAge])
   const [loadMsg,    setLoadMsg]    = useState('')
 
   // 妻の手取り年収：基本額＋末っ子が各年齢に達したら上乗せ
@@ -548,7 +539,8 @@ export default function SimTab() {
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
   const [work, setWork] = useState(DEFAULT_WORK)           // 60歳以降の働き方
-  const [insPayEnd, setInsPayEnd] = useState({})          // 外貨保険ごとの払込終了年 { 保険名: 西暦 }
+  const [insPayEnd, setInsPayEnd] = useState({})          // 外貨保険ごとの払込をやめる年 { 保険名: 西暦 }
+  const [insReceive, setInsReceive] = useState({})        // 外貨保険ごとの受け取る年 { 保険名: 西暦 }（なければ払込をやめる年）
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
@@ -564,7 +556,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd, insReceive })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -574,7 +566,8 @@ export default function SimTab() {
         const s = r.data
         if (s) {
           if (s.params) {
-            const { retirementBonus: _old, ...rest } = s.params  // 退職金はDCに一本化したので捨てる
+            // 退職金はDCに一本化、保険の受け取り年齢は保険ごとの年に変えたので捨てる
+            const { retirementBonus: _old, insuranceAge: _oldIns, ...rest } = s.params
             setParams(p => ({ ...p, ...rest }))
           }
           if (s.child1) setChild1(c => ({ ...c, ...s.child1 }))
@@ -586,6 +579,7 @@ export default function SimTab() {
           if (Array.isArray(s.whatIfs)) setWhatIfs(s.whatIfs.filter(w => whatIfField(w.key)))
           if (s.work) setWork(w => ({ me: { ...w.me, ...s.work.me }, wife: { ...w.wife, ...s.work.wife } }))
           if (s.insPayEnd) setInsPayEnd(s.insPayEnd)
+          if (s.insReceive) setInsReceive(s.insReceive)
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -741,28 +735,40 @@ export default function SimTab() {
   const { retireAge, lifeExpectancy, pensionStartAge } = params
   const { monthlyExpense, pensionMonthly } = vals
 
-  // ─── 外貨保険の年払い ───────────────────────────
-  // 保険ごとに「年払い額(USD) × 今の為替」を、払込終了年まで（解約する年まで）毎年払う。
-  // 今年の年払い記録があれば今年分は払い済みとして来年から数える
-  const insPremiums = useMemo(() => {
+  // ─── 外貨保険（保険ごと） ─────────────────────────
+  // 保険ごとに「払込をやめる年」と「受け取る年」を決める（受け取る年の初期値は払込をやめる年）。
+  //  ・保険料：払込をやめる年まで「年払い額(USD) × 今の為替」を毎年。今年の年払い記録があれば今年分は払い済みとして来年から
+  //  ・返戻金：払込をやめた年の解約返戻金表の一括額で確定し、受け取る年までは増えない（今の為替で円換算）
+  //  ・受け取る年を払込をやめる年より前にした場合は、受け取る年で払込もやめる
+  const insPolicies = useMemo(() => {
     if (!insData) return []
     const thisYear = new Date().getFullYear()
-    const receiveYear = thisYear + (Number(params.insuranceAge) - params.currentAge)
+    const payEndOf = (name) => Math.max(thisYear, Number(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge)) || thisYear)
+    const receiveOf = (name) => Math.max(thisYear, Number(insReceive[name] ?? payEndOf(name)) || payEndOf(name))
+    const yearOf = (name) => Math.min(payEndOf(name), receiveOf(name))
+    const surrender = Object.fromEntries(surrenderAtYears(insData, yearOf).map(d => [d.name, d]))
     return (insData.masters || []).map(m => {
       const name = m['保険名']
       const usd = parseFloat(String(m['年払い額(USD)'] || '').replace(/[,$\s]/g, '')) || 0
       const paidThisYear = (insData.payments || []).some(x => x['保険名'] === name && toYM(x['年月']).startsWith(String(thisYear)))
       const startYear = paidThisYear ? thisYear + 1 : thisYear
-      const endYear = Number(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge))
-      const lastYear = Math.min(endYear, receiveYear)
-      const times = Math.max(0, lastYear - startYear + 1)
+      const endYear = yearOf(name)
+      const receiveYear = receiveOf(name)
+      const times = usd > 0 ? Math.max(0, endYear - startYear + 1) : 0
       const annual = Math.round(usd * insData.usdJpy)
+      const sv = surrender[name] || { usd: 0, method: 'none' }
       return {
-        name, usd, annual, startYear, endYear, lastYear, times, total: annual * times,
-        fromAge: params.currentAge + (startYear - thisYear), toAge: params.currentAge + (lastYear - thisYear),
+        name, usd, annual, startYear, endYear, lastYear: endYear, times, total: annual * times,
+        fromAge: params.currentAge + (startYear - thisYear), toAge: params.currentAge + (endYear - thisYear),
+        payEndAge: params.currentAge + (endYear - thisYear),
+        receiveYear, receiveAge: params.currentAge + (receiveYear - thisYear), linked: insReceive[name] == null,
+        method: sv.method, from: sv.from, returnUsd: sv.usd, jpy: Math.round(sv.usd * insData.usdJpy),
       }
-    }).filter(x => x.usd > 0)
-  }, [insData, insPayEnd, params.insuranceAge, params.currentAge])
+    })
+  }, [insData, insPayEnd, insReceive, params.currentAge])
+  const insuranceReturnTotal = insPolicies.reduce((t, x) => t + x.jpy, 0)
+  // 合計は LPチェック・AI相談・資産の要約で使う
+  useEffect(() => { setVals(v => (v.insuranceReturn === insuranceReturnTotal ? v : { ...v, insuranceReturn: insuranceReturnTotal })) }, [insuranceReturnTotal])
 
   // ─── シミュレーション ────────────────────────────
   const simParams = useMemo(() => ({
@@ -791,12 +797,11 @@ export default function SimTab() {
     wifePensionStartAge: params.wifePensionStartAge,
     monthlyRent:     params.monthlyRent,
     pensionMonthly:  vals.pensionMonthly,
-    insuranceReturn: vals.insuranceReturn,
-    insuranceAge:    params.insuranceAge,
+    insuranceLumps:  insPolicies.filter(x => x.jpy > 0).map(x => ({ age: x.receiveAge, amount: x.jpy })),
     retireExpenseRate: params.retireExpenseRate,
     work,
-    insurancePremiums: insPremiums,
-  }), [params, vals, wife, work, insPremiums])
+    insurancePremiums: insPolicies.filter(x => x.times > 0),
+  }), [params, vals, wife, work, insPolicies])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
   // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
@@ -857,7 +862,7 @@ export default function SimTab() {
   // LPチェック・AIに渡すLPタブの中身
   const lp = {
     params, vals, wife, work, assumptions: MODEL_ASSUMPTIONS,
-    dataMeta: { ...dataMeta, insurance: insDetail, premiums: insPremiums },
+    dataMeta: { ...dataMeta, insurance: insPolicies, premiums: insPolicies.filter(x => x.usd > 0) },
     notes: { expense: expenseNote, income: incomeNote, yutori: yutoriNote },
     events: { child1, child2, car, dog, home: homeEff, homestLinked },
     results: {
@@ -1099,30 +1104,44 @@ export default function SimTab() {
             <Field label="年金で受け取る年数" unit="年" note="5〜20年" value={params.dcYears} onChange={setP('dcYears')} />
           )}
         </div>
-        <div className="sim-subhead">外貨保険</div>
-        <div className="sim-fields">
-          <Field label="返戻予定額" unit="円（一括）" note={`${params.insuranceAge}歳で解約（保険simuの解約返戻金表×今の為替）`} fetched wide
-            value={vals.insuranceReturn} onChange={setV('insuranceReturn')} />
-          <Field label="受け取る年齢" unit="歳" value={params.insuranceAge} onChange={setP('insuranceAge')} />
-        </div>
-        {insPremiums.length > 0 && (
+        <div className="sim-subhead">外貨保険 <span className="sim-section-note">保険ごとに、払込をやめる年と受け取る年を決める</span></div>
+        {insPolicies.length === 0 ? (
+          <p className="sim-ef-note">外貨保険のデータがありません（データ再取得、またはサマリタブの外貨保険で登録）</p>
+        ) : (
           <div className="sim-events">
             <div className="sim-event-body sim-work">
-              <div className="sim-ef-label"><strong>年払いの保険料</strong>（払い終わるまで毎年、預金から払う）</div>
-              {insPremiums.map(x => (
-                <div key={x.name} className="sim-ef">
-                  <span className="sim-ef-label">{x.name}：年 ${x.usd.toLocaleString()}（{fmt(x.annual)}）</span>
+              {insPolicies.map(x => (
+                <div key={x.name} className="sim-ef sim-ins">
+                  <span className="sim-ef-label"><strong>{x.name}</strong><span className="sim-badge">取得</span></span>
                   <div className="sim-ef-row sim-work-row">
-                    <span className="sim-ef-unit">払込は</span>
                     <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.endYear}
                       onChange={e => setInsPayEnd(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
-                    <span className="sim-ef-unit">年まで →
-                      {x.times > 0 ? ` ${x.startYear}〜${x.lastYear}年の${x.times}回・計 ${fmt(x.total)}` : ' もう払わない'}
-                      {x.lastYear < x.endYear ? `（${params.insuranceAge}歳で解約するのでそこまで）` : ''}</span>
+                    <span className="sim-ef-unit">年（{x.payEndAge}歳）まで払う</span>
                   </div>
+                  <div className="sim-ef-row sim-work-row">
+                    <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.receiveYear}
+                      onChange={e => setInsReceive(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
+                    <span className="sim-ef-unit">年（{x.receiveAge}歳）に解約して受け取る{x.linked ? '（払込をやめる年と同じ）' : ''}</span>
+                    {!x.linked && (
+                      <button type="button" className="sim-link-btn"
+                        onClick={() => setInsReceive(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== x.name)))}>払込と同じ年に戻す</button>
+                    )}
+                  </div>
+                  <span className="sim-ef-note">
+                    保険料：{x.usd > 0
+                      ? (x.times > 0 ? `年 ${fmt(x.annual)}（$${x.usd.toLocaleString()}）× ${x.startYear}〜${x.endYear}年の${x.times}回 ＝ ${fmt(x.total)}` : 'もう払わない')
+                      : '年払い額なし'}
+                  </span>
+                  <span className="sim-ef-note">
+                    返戻金：{x.jpy > 0
+                      ? `${x.endYear}年の ${fmt(x.jpy)}（$${Math.round(x.returnUsd).toLocaleString()}・${{ exact: '表の値', interp: '前後の年から推計', nearest: '表の範囲外のため近い年の値' }[x.method] || ''}）を${x.receiveYear > x.endYear ? `増やさずに${x.receiveYear}年に` : 'その年に'}受け取る`
+                      : '解約返戻金表がない（サマリタブの外貨保険で入力）'}
+                  </span>
                 </div>
               ))}
-              <p className="sim-ef-note">今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。</p>
+              <p className="sim-ef-note">
+                返戻金の合計 {fmt(insuranceReturnTotal)}。金額は払込をやめた年の解約返戻金表（保険simu）の値で決まり、受け取るまでは増えない前提です。今年の年払い記録がある保険は、今年分を払い済みとして来年から数えます。円換算は今の為替のまま。
+              </p>
             </div>
           </div>
         )}
