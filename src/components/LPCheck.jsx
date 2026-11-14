@@ -60,6 +60,7 @@ function ResultLine({ base, s, endAge }) {
   const cls = (good) => (good == null ? '' : good ? ' pos' : ' neg')
   return (
     <div className="lpc-result">
+      {s.pass !== undefined && <span className={`lpc-pass ${s.pass ? 'pos' : 'neg'}`}>{s.pass ? '✅ 合格' : '❌ 不合格'}</span>}
       <span>資産：<strong>{zeroText(s, endAge)}</strong>
         {zd && <em className={`lpc-diff${cls(zd.good)}`}>（{zd.text}）</em>}</span>
       <span>退職直前 {manSign(s.retireAssets)}

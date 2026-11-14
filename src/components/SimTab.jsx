@@ -10,7 +10,7 @@ import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
 import LPCheck from './LPCheck'
 import {
-  DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField,
+  DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField, checkPlan, seekAll,
 } from '../utils/lpChecks'
 import './SimTab.css'
 
@@ -152,6 +152,7 @@ const MODEL_ASSUMPTIONS = [
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
+  'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
   '住宅ローン控除・固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
@@ -215,7 +216,9 @@ function runSim(p, events) {
     const annualExpense = ((monthlyExpense * livingRate + monthlyRent) * 12 + yutoriAnnual * livingRate) * infl
     // 妻の年金は妻の年齢で受給開始（あなたの退職前に始まる場合も含む）
     const wifePension   = wifeAge + t >= wifePensionStartAge ? wifePensionMonthly * 12 * infl : 0
-    const annualPension = (hasPension ? pensionMonthly * 12 * infl : 0) + wifePension  // 働いていても受け取る（在職老齢年金の減額は考えない）
+    // あなたの年金は65歳の見込み額。繰下げは1か月0.7%増、繰上げは1か月0.4%減
+    const pensionAdj = pensionStartAge >= 65 ? 1 + 0.007 * 12 * (pensionStartAge - 65) : 1 - 0.004 * 12 * (65 - pensionStartAge)
+    const annualPension = (hasPension ? pensionMonthly * pensionAdj * 12 * infl : 0) + wifePension  // 働いていても受け取る（在職老齢年金の減額は考えない）
 
     // ライフイベントコスト
     let eventCost = 0
@@ -319,28 +322,6 @@ function loanBalance(principal, ratePercent, years, k) {
   return principal * (1 + i) ** m - pmt * ((1 + i) ** m - 1) / i
 }
 
-// 合格ライン：①手元のお金（預金＋投信＋外貨保険。DCと家は除く）が生活費の○か月分を割らない ②最後の年に○円以上残る
-function checkPlan(series, minMonths, target) {
-  const lowYears = series.filter(d => {
-    const handy = d.cash + d.invest + d.ins
-    return handy < (d.expense || 0) / 12 * minMonths
-  }).map(d => d.age)
-  const last = series[series.length - 1]
-  const endOk = last ? last.assets >= target : true
-  // 連続した年齢をまとめる（44〜59歳 など）
-  const ranges = []
-  for (const a of lowYears) {
-    const r = ranges[ranges.length - 1]
-    if (r && a === r[1] + 1) r[1] = a
-    else ranges.push([a, a])
-  }
-  return {
-    ok: lowYears.length === 0 && endOk,
-    lowYears, lowRanges: ranges.map(([a, b]) => (a === b ? `${a}歳` : `${a}〜${b}歳`)),
-    endAge: last?.age, endAssets: last?.assets ?? 0, endOk,
-    maxShort: Math.min(0, ...series.map(d => d.short || 0)),
-  }
-}
 
 function findZeroAge(data) {
   for (let i = 1; i < data.length; i++) {
@@ -977,9 +958,20 @@ export default function SimTab() {
   }
 
   const checks = { data: dataChecks(lp), plan: planChecks(lp) }
+  const minMonthsN = Number(params.minMonths) || 0
+  const targetN = Number(params.targetAtEnd) || 0
+  const judge = useMemo(() => (series) => checkPlan(series, minMonthsN, targetN), [minMonthsN, targetN])
   const whatIfResults = useMemo(
-    () => runWhatIfs(simParams, events, runSim, whatIfs),
-    [simParams, events, whatIfs])
+    () => runWhatIfs(simParams, events, runSim, whatIfs, judge),
+    [simParams, events, whatIfs, judge])
+  // ③ 合格するための条件（打ち手ごとに、どこまで変えれば合格するか）
+  const seeks = useMemo(
+    () => (plan.ok ? [] : seekAll(simParams, events, runSim, judge)),
+    [plan.ok, simParams, events, judge])
+  const addWhatIf = (key, value) => setWhatIfs(ws => [
+    ...ws.filter(w => w.key !== key),
+    { id: `w${Date.now()}`, key, value },
+  ])
 
   // AI相談に渡す内容（毎年の推移は大きいので外す）
   const { series: _series, ...resultsForAI } = lp.results
@@ -988,6 +980,7 @@ export default function SimTab() {
     lp: { ...lp, results: resultsForAI },
     dataChecks: checks.data,
     planChecks: checks.plan,
+    seeks: seeks.map(x => ({ label: x.label, unit: x.unit, from: x.from, to: x.to, status: x.status })),
     whatIfs: {
       rows: whatIfs.map((w, i) => {
         const f = whatIfField(w.key)
@@ -1038,6 +1031,27 @@ export default function SimTab() {
             <li>{plan.endOk ? '✓' : '✗'} {plan.endAge}歳で使えるお金が{fmt(params.targetAtEnd)}以上残る
               <strong>：{fmtSign(plan.endAssets)}</strong></li>
           </ul>
+          {!plan.ok && seeks.length > 0 && (
+            <details className="sim-seek" open>
+              <summary>🎯 合格するには（どれか1つだけ変えるなら）</summary>
+              <ul className="sim-seek-list">
+                {seeks.map(x => (
+                  <li key={x.key} className={x.status === 'ok' ? '' : 'sim-seek-none'}>
+                    <span className="sim-seek-label">{x.label}</span>
+                    {x.status === 'ok' ? (
+                      <>
+                        <span className="sim-seek-val">{x.fmt(x.from)} → <strong>{x.fmt(x.to)}</strong></span>
+                        <button type="button" className="sim-seek-add" onClick={() => addWhatIf(x.key, x.to)}>もしも比較に追加</button>
+                      </>
+                    ) : (
+                      <span className="sim-seek-val">これだけでは届かない（{x.fmt(x.limit)}まで変えても）</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <p className="sim-pass-note">1つで届かなくても、いくつかを少しずつ変えると合格できることがあります。「もしも比較に追加」で入れて、LPチェックのもしも比較の「全部あわせると」で確かめられます。</p>
+            </details>
+          )}
           <p className="sim-pass-note">
             {plan.maxShort < 0 ? `崩せるものを全部崩しても、最大で${fmt(-plan.maxShort)}足りません（グラフの赤）。` : ''}
             {homeAtEnd > 0 ? `家の純資産は${plan.endAge}歳で約${man(homeAtEnd)}（使えるお金には入れていません）。` : ''}
@@ -1272,7 +1286,7 @@ export default function SimTab() {
         summary={`夫婦で月${man1(totalPension)}（あなた${pensionStartAge}歳〜／妻${params.wifePensionStartAge}歳〜）`}>
         <div className="sim-fields">
           <Field label="あなたの年金" unit="円 / 月" note="年金タブ（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
-          <Choice label="あなたの受給開始" options={[[60, '60歳'], [65, '65歳'], [70, '70歳']]}
+          <Field label="あなたの受給開始" unit="歳" note="60〜75歳。65歳より遅いと1か月0.7%増、早いと0.4%減"
             value={params.pensionStartAge} onChange={setP('pensionStartAge')} />
           <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />
           <Field label="妻の受給開始" unit="歳（妻の年齢）" value={params.wifePensionStartAge} onChange={setP('wifePensionStartAge')} />

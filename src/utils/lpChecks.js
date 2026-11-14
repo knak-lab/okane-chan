@@ -170,6 +170,7 @@ export const WHATIF_FIELDS = [
   { key: 'wifeReducedRate',   label: '妻の減額後の給料',      unit: '%',    target: 'work', who: 'wife', field: 'reducedRate' },
   { key: 'wifeLateIncome',    label: '妻の65歳以降の年収',    unit: '円/年', target: 'work', who: 'wife', field: 'lateIncome' },
   { key: 'wifeLateUntil',     label: '妻が働くのをやめる年齢', unit: '歳',   target: 'work', who: 'wife', field: 'lateUntil' },
+  { key: 'homeTotal',         label: '家の予算（土地＋建物）', unit: '円',  target: 'homeTotal' },
   { key: 'loanYears',         label: 'ローン期間',           unit: '年',   target: 'home' },
   { key: 'loanRate',          label: 'ローン金利',           unit: '%/年', target: 'home' },
   { key: 'downPayment',       label: '頭金',                 unit: '円',   target: 'home' },
@@ -182,6 +183,7 @@ export function currentValue(key, simParams, events) {
   const f = whatIfField(key)
   if (!f) return 0
   if (f.target === 'home') return Number(events.home?.[key]) || 0
+  if (f.target === 'homeTotal') return (Number(events.home?.landPrice) || 0) + (Number(events.home?.buildingPrice) || 0)
   if (f.target === 'work') return Number(simParams.work?.[f.who]?.[f.field]) || 0
   return Number(simParams[f.simKey || key]) || 0
 }
@@ -201,6 +203,13 @@ export function applyWhatIfs(simParams, events, conds) {
     const f = whatIfField(c.key)
     if (!f) continue
     if (f.target === 'home') ev.home[c.key] = Number(c.value) || 0
+    else if (f.target === 'homeTotal') {
+      // 土地と建物の比率はそのままで、合計を指定した額にする
+      const land = Number(ev.home.landPrice) || 0, bld = Number(ev.home.buildingPrice) || 0
+      const k = land + bld > 0 ? (Number(c.value) || 0) / (land + bld) : 0
+      ev.home.landPrice = land * k
+      ev.home.buildingPrice = bld * k
+    }
     else if (f.target === 'work') {
       p.work = { ...p.work, [f.who]: { ...p.work?.[f.who], [f.field]: Number(c.value) || 0 } }
     } else p[f.simKey || c.key] = Number(c.value) || 0
@@ -209,7 +218,7 @@ export function applyWhatIfs(simParams, events, conds) {
 }
 
 // シミュレーション結果の要約（もしも比較の表に使う）
-export function summarize(series, retireAge) {
+export function summarize(series, retireAge, judge) {
   let zeroAge = null
   for (let i = 1; i < series.length; i++) {
     if (series[i - 1].assets > 0 && series[i].assets <= 0) { zeroAge = series[i].age; break }
@@ -218,18 +227,89 @@ export function summarize(series, retireAge) {
     zeroAge,
     retireAssets: series.find(d => d.age === retireAge)?.assets ?? 0,
     endAssets: series.length ? series[series.length - 1].assets : 0,
+    pass: judge ? judge(series).ok : undefined,
   }
 }
 
 // 今のプランと、もしも条件ごと（＋全部あわせて）の結果をまとめて計算する
-export function runWhatIfs(simParams, events, simulate, whatIfs) {
+export function runWhatIfs(simParams, events, simulate, whatIfs, judge) {
   const run = (conds) => {
     const a = applyWhatIfs(simParams, events, conds)
-    return { s: summarize(simulate(a.simParams, a.events), a.simParams.retireAge), endAge: a.simParams.endAge }
+    return { s: summarize(simulate(a.simParams, a.events), a.simParams.retireAge, judge), endAge: a.simParams.endAge }
   }
   return {
     base: run([]),
     rows: whatIfs.map(w => run([w])),
     all: whatIfs.length >= 2 ? run(whatIfs) : null,
   }
+}
+
+// 合格ライン：①手元のお金（預金＋投信＋外貨保険。DCと家は除く）が生活費の○か月分を割らない ②最後の年に○円以上残る
+export function checkPlan(series, minMonths, target) {
+  const lowYears = series.filter(d => {
+    const handy = d.cash + d.invest + d.ins
+    return handy < (d.expense || 0) / 12 * minMonths
+  }).map(d => d.age)
+  const last = series[series.length - 1]
+  const endOk = last ? last.assets >= target : true
+  // 連続した年齢をまとめる（44〜59歳 など）
+  const ranges = []
+  for (const a of lowYears) {
+    const r = ranges[ranges.length - 1]
+    if (r && a === r[1] + 1) r[1] = a
+    else ranges.push([a, a])
+  }
+  return {
+    ok: lowYears.length === 0 && endOk,
+    lowYears, lowRanges: ranges.map(([a, b]) => (a === b ? `${a}歳` : `${a}〜${b}歳`)),
+    endAge: last?.age, endAssets: last?.assets ?? 0, endOk,
+    maxShort: Math.min(0, ...series.map(d => d.short || 0)),
+  }
+}
+
+// ─── ③ 合格するための条件（逆算） ─────────────────────
+// 打ち手ごとに、今の値から「limit」に向けて動かしたとき、合格する一番近い値を二分探索で探す。
+// （その打ち手だけを変えた場合。値が大きいほど良い打ち手は up、小さいほど良い打ち手は down）
+const yenFmt = (v) => `¥${Math.round(v).toLocaleString()}`
+const manFmt = (v) => `${Math.round(v / 10_000).toLocaleString()}万円`
+const LEVERS = [
+  { key: 'homeTotal',         label: '家の予算（土地＋建物）',  limit: c => c * 0.5, step: 100_000, fmt: manFmt, needHome: true },
+  { key: 'monthlyExpense',    label: '今の生活費（安心＋彩り）', limit: c => c * 0.6, step: 1_000,   fmt: v => `月${yenFmt(v)}` },
+  { key: 'retireExpenseRate', label: '退職後の生活費',          limit: () => 50,      step: 1,       fmt: v => `${Math.round(v)}%` },
+  { key: 'meReducedRate',     label: 'あなたの60歳からの給料',   limit: () => 100,     step: 1,       fmt: v => `${Math.round(v)}%` },
+  { key: 'meLateIncome',      label: 'あなたの65歳以降の年収',   limit: () => 6_000_000, step: 10_000, fmt: v => `年${manFmt(v)}` },
+  { key: 'meLateUntil',       label: 'あなたが働くのをやめる年齢', limit: () => 75,    step: 1,       fmt: v => `${Math.round(v)}歳` },
+  { key: 'pensionStartAge',   label: 'あなたの年金の受給開始',   limit: () => 75,      step: 1,       fmt: v => `${Math.round(v)}歳` },
+  { key: 'extraSaving',       label: '支出を減らして定年まで積み立てる額', limit: () => 500_000, step: 1_000,  fmt: v => `月${yenFmt(v)}` },
+]
+
+export function seekAll(simParams, events, simulate, judge) {
+  const passWith = (key, value) => {
+    const a = applyWhatIfs(simParams, events, [{ key, value }])
+    return judge(simulate(a.simParams, a.events)).ok
+  }
+  const out = []
+  for (const lv of LEVERS) {
+    if (lv.needHome && !events.home?.enabled) continue
+    const from = currentValue(lv.key, simParams, events)
+    const limit = lv.limit(from)
+    if (Math.abs(limit - from) < lv.step) continue
+    const f = whatIfField(lv.key)
+    const row = { key: lv.key, label: lv.label, unit: f?.unit || '', from, limit, fmt: lv.fmt }
+    if (!passWith(lv.key, limit)) { out.push({ ...row, status: 'none' }); continue }
+    let ng = from, ok = limit  // ng 側は不合格、ok 側は合格
+    for (let i = 0; i < 40 && Math.abs(ok - ng) > lv.step; i++) {
+      const mid = (ng + ok) / 2
+      if (passWith(lv.key, mid)) ok = mid
+      else ng = mid
+    }
+    // 刻みに丸める（合格する側へ）
+    const up = limit > from
+    const to = up ? Math.ceil(ok / lv.step) * lv.step : Math.floor(ok / lv.step) * lv.step
+    out.push({ ...row, status: 'ok', to: passWith(lv.key, to) ? to : ok })
+  }
+  // 届くものを先に、変える割合が小さい順
+  return out.sort((a, b) => (a.status === b.status
+    ? Math.abs((a.to ?? a.limit) - a.from) / Math.max(1, Math.abs(a.limit - a.from)) - Math.abs((b.to ?? b.limit) - b.from) / Math.max(1, Math.abs(b.limit - b.from))
+    : a.status === 'ok' ? -1 : 1))
 }
