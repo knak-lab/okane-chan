@@ -36,8 +36,10 @@ const fmt      = (v) => `¥${Math.round(Math.abs(v)).toLocaleString()}`
 const fmtSign  = (v) => (v < 0 ? '▲' : '') + fmt(v)
 
 const formatYAxis = (v) => {
-  if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(0)}億`
-  if (v >= 10_000)       return `${Math.round(v / 10_000)}万`
+  const sign = v < 0 ? '−' : ''
+  const a = Math.abs(v)
+  if (a >= 100_000_000) return `${sign}${(a / 100_000_000).toFixed(a % 100_000_000 ? 1 : 0)}億`
+  if (a >= 10_000)       return `${sign}${Math.round(a / 10_000)}万`
   return v === 0 ? '0' : `${v}`
 }
 
@@ -146,6 +148,8 @@ const MODEL_ASSUMPTIONS = [
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
+  'お金が足りないときは 預金 → 投信 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
+  '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当・高校/大学無償化・奨学金などの収入側は入っていない',
@@ -178,13 +182,23 @@ function runSim(p, events) {
   const homeLoan = home?.enabled
     ? annualLoanPayment(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears))
     : 0
+  // 外貨保険を一部解約したときの残りの割合（足りないときに崩すと減る。返戻金・保険料も同じ割合で減る）
+  let insFactor = 1
 
   for (let age = startAge; age <= endAge; age++) {
-    // 外貨保険は受け取るまで「今解約したらもらえる額」を資産に数える（いつでも解約できるため）
-    const ins = insuranceValues[age] || 0
-    data.push({ age, assets: Math.round(cash + invest + dc + ins), cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc), ins: Math.round(ins) })
-
     const t          = age - startAge
+    // 外貨保険は受け取るまで「今解約したらもらえる額」を資産に数える（いつでも解約できるため）
+    const ins = (insuranceValues[age] || 0) * insFactor
+    // 家は「土地＋建物の価値 − ローン残高」を資産（純資産）として別に数える。生活費には使えないので「使えるお金」には入れない
+    const homeEquity = homeEquityAt(home, t)
+    data.push({
+      age,
+      assets: Math.round(cash + invest + dc + ins),          // 使えるお金の合計（預金はマイナスもありうる）
+      cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc), ins: Math.round(ins),
+      home: Math.round(homeEquity),
+      short: Math.round(Math.min(0, cash)),                   // 崩せるものを崩しても足りない額（累計）
+    })
+
     const infl       = (1 + (inflationRate || 0) / 100) ** t
     const retired    = age >= retireAge
     const hasPension = age >= pensionStartAge
@@ -246,9 +260,9 @@ function runSim(p, events) {
     }
 
     // 外貨保険の解約返戻金は、保険ごとの受け取る年（＝払込終了年）に一括加算
-    const lump = insuranceLumps.reduce((sum, x) => sum + (age === x.age ? x.amount : 0), 0)
+    const lump = insuranceLumps.reduce((sum, x) => sum + (age === x.age ? x.amount : 0), 0) * insFactor
     // 外貨保険の年払い（払い終わるまで。今の為替で円換算した額のまま）
-    const premium = insurancePremiums.reduce((sum, x) => sum + (age >= x.fromAge && age <= x.toAge ? x.annual : 0), 0)
+    const premium = insurancePremiums.reduce((sum, x) => sum + (age >= x.fromAge && age <= x.toAge ? x.annual : 0), 0) * insFactor
 
     // DC：受け取るまでは運用と掛金（定年まで）で増える。受け取ったら一時金は投資へ、年金は分けて預金へ
     dc += Math.max(0, dc) * rInvest + (age < dcAge ? dcInvest : 0)
@@ -265,13 +279,67 @@ function runSim(p, events) {
 
     invest += Math.max(0, invest) * rInvest + fundInvest + extra
     cash   += Math.max(0, cash) * rCash + annualIncome - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay
+    // 足りないときに崩す順番：預金 → 投信 → 外貨保険（一部解約）。DCは受け取るまで崩せない
     if (cash < 0 && invest > 0) {
       const draw = Math.min(invest, -cash)
       invest -= draw
       cash   += draw
     }
+    const insNext = (insuranceValues[age + 1] || 0) * insFactor
+    if (cash < 0 && insNext > 0) {
+      const draw = Math.min(insNext, -cash)
+      insFactor *= 1 - draw / insNext
+      cash += draw
+    }
+    data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
   }
   return data
+}
+
+// 家の純資産 ＝ 土地（値上がり率で増減）＋ 建物（耐用年数で残存割合まで直線で減る）− ローン残高
+function homeEquityAt(home, t) {
+  if (!home?.enabled) return 0
+  const k = t - Number(home.yearsFromNow)
+  if (k < 0) return 0
+  const land = Number(home.landPrice) * (1 + (Number(home.landGrowth) || 0) / 100) ** k
+  const life = Math.max(1, Number(home.buildingLife) || 30)
+  const residual = Math.min(100, Math.max(0, Number(home.buildingResidual) || 0)) / 100
+  const building = Number(home.buildingPrice) * Math.max(residual, 1 - (k / life) * (1 - residual))
+  return land + building - loanBalance(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears), k)
+}
+
+// 元利均等返済で k 年払ったあとのローン残高
+function loanBalance(principal, ratePercent, years, k) {
+  if (principal <= 0 || k >= years) return 0
+  const i = (ratePercent || 0) / 100 / 12
+  const n = years * 12
+  const m = k * 12
+  if (i === 0) return principal * (1 - m / n)
+  const pmt = principal * i / (1 - (1 + i) ** -n)
+  return principal * (1 + i) ** m - pmt * ((1 + i) ** m - 1) / i
+}
+
+// 合格ライン：①手元のお金（預金＋投信＋外貨保険。DCと家は除く）が生活費の○か月分を割らない ②最後の年に○円以上残る
+function checkPlan(series, minMonths, target) {
+  const lowYears = series.filter(d => {
+    const handy = d.cash + d.invest + d.ins
+    return handy < (d.expense || 0) / 12 * minMonths
+  }).map(d => d.age)
+  const last = series[series.length - 1]
+  const endOk = last ? last.assets >= target : true
+  // 連続した年齢をまとめる（44〜59歳 など）
+  const ranges = []
+  for (const a of lowYears) {
+    const r = ranges[ranges.length - 1]
+    if (r && a === r[1] + 1) r[1] = a
+    else ranges.push([a, a])
+  }
+  return {
+    ok: lowYears.length === 0 && endOk,
+    lowYears, lowRanges: ranges.map(([a, b]) => (a === b ? `${a}歳` : `${a}〜${b}歳`)),
+    endAge: last?.age, endAssets: last?.assets ?? 0, endOk,
+    maxShort: Math.min(0, ...series.map(d => d.short || 0)),
+  }
 }
 
 function findZeroAge(data) {
@@ -409,7 +477,9 @@ const SERIES = [
   { key: 'invest', name: '投資（投信）', color: '#eb6834' },
   { key: 'dc',     name: 'DC（退職金）', color: '#1baf7a' },
   { key: 'ins',    name: '外貨保険',     color: '#eda100' },
+  { key: 'home',   name: '家（純資産）', color: '#b8bec7' },
 ]
+const SHORT_COLOR = '#e34948'
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
@@ -417,13 +487,19 @@ const CustomTooltip = ({ active, payload, label }) => {
   return (
     <div className="sim-tooltip">
       <p className="sim-tt-age">{label}歳</p>
-      <p className="sim-tt-row sim-tt-total"><span>合計</span><span>{fmtSign(d.raw.assets)}</span></p>
-      {SERIES.map(s => (
-        <p key={s.key} className="sim-tt-row">
-          <span><i className="sim-tt-dot" style={{ background: s.color }} />{s.name}</span>
-          <span>{fmtSign(d.raw[s.key])}</span>
+      <p className="sim-tt-row sim-tt-total"><span>使えるお金</span><span>{fmtSign(d.raw.assets)}</span></p>
+      {SERIES.map(sr => (
+        <p key={sr.key} className="sim-tt-row">
+          <span><i className="sim-tt-dot" style={{ background: sr.color }} />{sr.name}</span>
+          <span>{fmtSign(d.raw[sr.key] || 0)}</span>
         </p>
       ))}
+      {d.raw.short < 0 && (
+        <p className="sim-tt-row sim-tt-short">
+          <span><i className="sim-tt-dot" style={{ background: SHORT_COLOR }} />足りない額</span>
+          <span>{fmtSign(d.raw.short)}</span>
+        </p>
+      )}
     </div>
   )
 }
@@ -496,6 +572,8 @@ export default function SimTab() {
     wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
+    minMonths:       6,     // 合格ライン：手元のお金が生活費の何か月分を割らないか
+    targetAtEnd:     0,     // 合格ライン：想定寿命の年に残したい額（使えるお金）
     dcReceiveAge:    60,    // DC（退職金）を受け取る年齢
     dcMode:          'lump', // DCの受け取り方：lump（一時金）| annuity（年金）
     dcYears:         10,    // 年金で受け取るときの年数
@@ -540,6 +618,7 @@ export default function SimTab() {
   const [home,   setHome]   = useState({
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
+    landGrowth: 0, buildingLife: 30, buildingResidual: 0,  // 家の価値：土地の値上がり率（%/年）、建物の耐用年数・残存割合（%）
   })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
@@ -840,11 +919,14 @@ export default function SimTab() {
   const chartData = useMemo(() =>
     sim.map(d => ({
       age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), dc: Math.max(0, d.dc), ins: Math.max(0, d.ins || 0),
+      home: Math.max(0, d.home || 0), short: Math.min(0, d.short || 0),
       total: Math.max(0, d.assets), raw: d,
     })),
     [sim])
 
   const retireAssets     = sim.find(d => d.age === retireAge)?.assets ?? 0
+  const plan             = checkPlan(sim, Number(params.minMonths) || 0, Number(params.targetAtEnd) || 0)
+  const homeAtEnd        = sim.length ? sim[sim.length - 1].home : 0
   const zeroAge          = findZeroAge(sim)
   // 月の生活費＝安心＋彩り＋家賃＋ときめき＋冒険の月割り
   const monthlyLiving    = monthlyExpense + params.monthlyRent + vals.yutoriAnnual / 12
@@ -889,6 +971,7 @@ export default function SimTab() {
       milestones: sim.filter(d =>
         d.age % 5 === 0 || d.age === retireAge || d.age === pensionStartAge || d.age === lifeExpectancy),
       series: sim,  // 毎年の預金・投資（LPチェックの判定用）
+      plan, homeAtEnd, minMonths: Number(params.minMonths) || 0, targetAtEnd: Number(params.targetAtEnd) || 0,
       homeLoanMonthly,
     },
   }
@@ -947,6 +1030,20 @@ export default function SimTab() {
 
       {/* 結論 */}
       <div className="sim-section">
+        <div className={`sim-pass ${plan.ok ? 'sim-pass--ok' : 'sim-pass--ng'}`}>
+          <p className="sim-pass-title">{plan.ok ? '✅ 合格ラインを満たしています' : '❌ 合格ラインに届いていません'}</p>
+          <ul className="sim-pass-list">
+            <li>{plan.lowYears.length === 0 ? '✓' : '✗'} 手元のお金（預金＋投信＋外貨保険）が生活費の{params.minMonths}か月分を割らない
+              {plan.lowYears.length > 0 && <strong>：{plan.lowRanges.join('・')}で下回る</strong>}</li>
+            <li>{plan.endOk ? '✓' : '✗'} {plan.endAge}歳で使えるお金が{fmt(params.targetAtEnd)}以上残る
+              <strong>：{fmtSign(plan.endAssets)}</strong></li>
+          </ul>
+          <p className="sim-pass-note">
+            {plan.maxShort < 0 ? `崩せるものを全部崩しても、最大で${fmt(-plan.maxShort)}足りません（グラフの赤）。` : ''}
+            {homeAtEnd > 0 ? `家の純資産は${plan.endAge}歳で約${man(homeAtEnd)}（使えるお金には入れていません）。` : ''}
+            合格ラインは「家族と経済の前提」で変えられます。
+          </p>
+        </div>
         <div className="sim-check-grid sim-conclusion">
           <SumCard
             label="資産が尽きる年齢"
@@ -988,7 +1085,7 @@ export default function SimTab() {
         <h3 className="sim-section-title">資産推移</h3>
         <div className="sim-chart-wrap">
           <ResponsiveContainer width="100%" height={300}>
-            <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+            <ComposedChart data={chartData} margin={{ top: 14, right: 12, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" vertical={false} />
               <XAxis dataKey="age" tickFormatter={v => `${v}歳`} tick={{ fontSize: 11 }}
                 interval="preserveStartEnd" />
@@ -998,18 +1095,21 @@ export default function SimTab() {
                 formatter={v => <span style={{ color: '#57606a' }}>{v}</span>}
                 payload={[
                   ...SERIES.map(sr => ({ value: sr.name, type: 'square', color: sr.color, id: sr.key })),
-                  { value: '合計', type: 'line', color: '#1f2328', id: 'total' },
+                  { value: '足りない額', type: 'square', color: SHORT_COLOR, id: 'short' },
+                  { value: '使えるお金の合計', type: 'line', color: '#1f2328', id: 'total' },
                 ]} />
               {SERIES.map(sr => (
                 <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.name} stackId="assets"
                   fill={sr.color} fillOpacity={0.8} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
               ))}
-              <Line type="monotone" dataKey="total" name="合計" stroke="#1f2328" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Area type="monotone" dataKey="short" name="足りない額" fill={SHORT_COLOR} fillOpacity={0.75} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
+              <ReferenceLine y={0} stroke="#888" />
+              <Line type="monotone" dataKey="total" name="使えるお金の合計" stroke="#1f2328" strokeWidth={2} dot={false} isAnimationActive={false} />
               <ReferenceLine x={retireAge} stroke="#003087" strokeDasharray="5 3"
                 label={{ value: `定年 ${retireAge}歳`, position: 'insideTopRight', fontSize: 10, fill: '#003087' }} />
               {zeroAge && (
                 <ReferenceLine x={zeroAge} stroke="#e74c3c" strokeDasharray="5 3"
-                  label={{ value: `枯渇 ${zeroAge}歳`, position: 'top', fontSize: 10, fill: '#e74c3c' }} />
+                  label={{ value: `枯渇 ${zeroAge}歳`, position: 'insideBottomLeft', fontSize: 10, fill: '#e74c3c' }} />
               )}
             </ComposedChart>
           </ResponsiveContainer>
@@ -1040,6 +1140,11 @@ export default function SimTab() {
           <Field label="物価上昇率" unit="% / 年" note="日銀の物価目標2%" value={params.inflationRate} onChange={setP('inflationRate')} />
           <Field label="投資の想定利回り" unit="% / 年" note="投信・DC" value={params.returnRate} onChange={setP('returnRate')} />
           <Field label="預金金利" unit="% / 年" value={params.cashRate} onChange={setP('cashRate')} />
+        </div>
+        <div className="sim-subhead">合格ライン</div>
+        <div className="sim-fields">
+          <Field label="手元のお金の下限" unit="か月分" note="預金＋投信＋外貨保険が、その年の生活費の何か月分を割らないか" value={params.minMonths} onChange={setP('minMonths')} />
+          <Field label="最後に残したい額" unit="円" note={`想定寿命（${lifeExpectancy}歳）の年の使えるお金`} wide value={params.targetAtEnd} onChange={setP('targetAtEnd')} />
         </div>
       </Section>
 
@@ -1295,6 +1400,12 @@ export default function SimTab() {
                   value={home.repairEvery} onChange={v => setHome(p => ({ ...p, repairEvery: v }))} />
                 <EventNumField label="修繕費用（1回）" unit="円" wide
                   value={home.repairCost} onChange={v => setHome(p => ({ ...p, repairCost: v }))} />
+                <EventNumField label="土地の値上がり率" unit="% / 年（0で価値そのまま）"
+                  value={home.landGrowth} onChange={v => setHome(p => ({ ...p, landGrowth: v }))} />
+                <EventNumField label="建物の耐用年数" unit="年（この年数で残存割合まで減る）"
+                  value={home.buildingLife} onChange={v => setHome(p => ({ ...p, buildingLife: v }))} />
+                <EventNumField label="建物の残存割合" unit="%（耐用年数後に残る価値）"
+                  value={home.buildingResidual} onChange={v => setHome(p => ({ ...p, buildingResidual: v }))} />
                 <label className="sim-ef sim-ef--check">
                   <input type="checkbox" checked={home.stopRent}
                     onChange={e => setHome(p => ({ ...p, stopRent: e.target.checked }))} />

@@ -125,10 +125,10 @@ export function planChecks(lp) {
 
   if (p.retireAge < p.pensionStartAge) add('warn', `${p.retireAge}〜${p.pensionStartAge}歳の${p.pensionStartAge - p.retireAge}年間はあなたの年金がない`)
 
-  // 退職前に預金が生活費の6か月分を下回る年
-  const living6 = (r.monthlyLiving || 0) * EMERGENCY_MONTHS
-  const low = (r.series || []).find(d => d.age < p.retireAge && d.cash < living6)
-  if (low && living6 > 0) add('warn', `${low.age}歳で預金が ${yen(low.cash)} になり、生活費${EMERGENCY_MONTHS}か月分（${yen(living6)}）を下回る`)
+  // 合格ライン（手元のお金・最後に残る額）と、崩しても足りない額
+  if (r.plan?.lowYears?.length) add('warn', `手元のお金（預金＋投信＋外貨保険）が生活費の${r.minMonths}か月分を下回る：${r.plan.lowRanges.join('・')}`)
+  if (r.plan && !r.plan.endOk) add('warn', `${r.plan.endAge}歳で使えるお金が ${yen(r.plan.endAssets)}（残したい額 ${yen(r.targetAtEnd)} に届かない）`)
+  if (r.plan?.maxShort < 0) add('ng', `預金・投信・外貨保険を崩しても、最大で ${yen(r.plan.maxShort)} 足りない（グラフの赤）`)
 
   const premiumLeft = (lp.dataMeta?.premiums || []).filter(x => x.times > 0)
   if (premiumLeft.length) {

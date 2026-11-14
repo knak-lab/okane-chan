@@ -393,3 +393,12 @@
 .sim-mini-input--year { width: 5.2em; }
 
 .sim-link-btn { background: none; border: none; color: #0969da; font-size: 0.72rem; padding: 0 0.2rem; cursor: pointer; }
+
+/* ─── 合格ライン ─── */
+.sim-pass { border-radius: 10px; padding: 0.7rem 0.9rem; margin-bottom: 0.75rem; border: 1px solid; }
+.sim-pass--ok { background: #f0fff5; border-color: #2ecc71; }
+.sim-pass--ng { background: #fff5f5; border-color: #e74c3c; }
+.sim-pass-title { font-weight: 700; margin: 0 0 0.35rem; font-size: 0.9rem; }
+.sim-pass-list { margin: 0; padding-left: 0; list-style: none; font-size: 0.8rem; line-height: 1.6; }
+.sim-pass-note { margin: 0.35rem 0 0; font-size: 0.72rem; color: #57606a; line-height: 1.5; }
+.sim-tt-short { color: #c62828; }
