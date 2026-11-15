@@ -26,7 +26,9 @@ function groupByCategory(txs, categories) {
     .map(([category, items]) => ({ category, items, total: items.reduce((s, t) => s + t.amount, 0) }))
     .sort((a, b) => order(a.category) - order(b.category))
 }
-const CUMULATIVE = '累計'
+// 年度計の選択値（例 "FY:2026"）。その年の1月〜データがある最後の月までを合計する
+const FY_PREFIX = 'FY:'
+const fyValue = (year) => `${FY_PREFIX}${year}`
 
 // 取引の行を特定するキー。PayPayは支払いと付与ポイントが同じ取引番号になるため、日付・金額も含める
 const txRowKey = (t) => [t.id, t['取引日'], t['出金金額（円）'], t['入金金額（円）']].join('|')
@@ -67,9 +69,22 @@ export default function AccView() {
   const [editDraft, setEditDraft] = useState(null)
   const [catSave, setCatSave] = useState({ id: null, status: 'idle', msg: '' })
 
-  const isCumulative = selectedMonth === CUMULATIVE
-  // 「累計」選択時は最新の実月（当月）を基準にJan〜当月のデータを扱う
-  const displayMonth = isCumulative ? availableMonths[0] : selectedMonth
+  const isCumulative = selectedMonth.startsWith(FY_PREFIX)
+  // 年度計の選択時は、その年でいちばん新しい月を基準に1月〜その月のデータを扱う（月リストは新しい順）
+  const displayMonth = isCumulative
+    ? (availableMonths.find(m => m.startsWith(`${selectedMonth.slice(FY_PREFIX.length)}-`)) || '')
+    : selectedMonth
+
+  // プルダウン：年度計の下にその年の月を新しい順に並べる
+  const monthsByYear = useMemo(() => {
+    const groups = []
+    for (const m of availableMonths) {
+      const y = m.slice(0, 4)
+      if (groups.at(-1)?.year !== y) groups.push({ year: y, months: [] })
+      groups.at(-1).months.push(m)
+    }
+    return groups
+  }, [availableMonths])
 
   // 月リスト取得（初回のみ）。前回起動時のリストがあれば通信を待たずに即使う
   useEffect(() => {
@@ -289,7 +304,7 @@ export default function AccView() {
   const cumulativePeriodLabel = useMemo(() => {
     const ms = [...cumulativeMidData.months].sort()
     return ms.length > 0
-      ? `${parseInt(ms[0].split('-')[1], 10)}〜${parseInt(ms[ms.length - 1].split('-')[1], 10)}月累計`
+      ? `${ms[0].slice(0, 4)}年 ${parseInt(ms[0].split('-')[1], 10)}〜${parseInt(ms[ms.length - 1].split('-')[1], 10)}月累計`
       : ''
   }, [cumulativeMidData.months])
 
@@ -309,9 +324,13 @@ export default function AccView() {
               value={selectedMonth}
               onChange={e => setSelected(e.target.value)}
             >
-              <option value={CUMULATIVE}>{CUMULATIVE}</option>
-              {availableMonths.map(m => (
-                <option key={m} value={m}>{m}</option>
+              {monthsByYear.map(g => (
+                <Fragment key={g.year}>
+                  <option value={fyValue(g.year)}>{g.year}年度計</option>
+                  {g.months.map(m => (
+                    <option key={m} value={m}>{'　∟'}{m.replace('-', '')}</option>
+                  ))}
+                </Fragment>
               ))}
             </select>
           )}
