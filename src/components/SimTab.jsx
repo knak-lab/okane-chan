@@ -145,9 +145,20 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
   if (age >= Number(w.lateUntil)) return 0
   if (age >= Number(w.lateFrom)) return Number(w.lateIncome) || 0
   const raiseYears = Math.max(0, Math.min(age, Number(w.raiseStopAge)) - ageNow)
-  // 昇進などの昇給（その年齢から手取り年収に上乗せ）。伸び率とは別に、減額（60歳〜）には同じ割合で効く
-  const stepUp = (w.raises || []).reduce((s, r) => s + (age >= Number(r.fromAge) ? Number(r.amount) || 0 : 0), 0)
-  let v = (baseNow + stepUp) * (1 + (incomeGrowth || 0) / 100) ** raiseYears
+  const g = 1 + (incomeGrowth || 0) / 100
+  // 昇進などの昇給「◯年後に手取り年◯円になる」。その年からは指定額を元に、伸び率と減額（60歳〜）を掛ける
+  const reached = (w.raises || [])
+    .filter(r => r.target != null && age >= ageNow + Number(r.years))
+    .sort((a, b) => Number(b.years) - Number(a.years))[0]
+  let v
+  if (reached) {
+    const from = ageNow + Number(reached.years)
+    v = (Number(reached.target) || 0) * g ** Math.max(0, Math.min(age, Number(w.raiseStopAge)) - from)
+  } else {
+    // 旧形式（◯歳から＋◯円）の昇給
+    const stepUp = (w.raises || []).reduce((s, r) => s + (r.target == null && age >= Number(r.fromAge) ? Number(r.amount) || 0 : 0), 0)
+    v = (baseNow + stepUp) * g ** raiseYears
+  }
   if (age >= Number(w.reducedFrom)) v *= (Number(w.reducedRate) || 0) / 100
   return v
 }
@@ -161,7 +172,7 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 // AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
 // runSim を変えたらここも合わせて直す
 const MODEL_ASSUMPTIONS = [
-  '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
+  '退職金はDC（企業型確定拠出年金）だけ。DCは受取年齢まで取り崩せず、「使えるお金」にも受取年齢まで入れない。掛金は定年まで。一時金なら受取年齢で全額を投資へ、年金なら指定の年数で分けて受け取る（税金は考慮していない）',
   '外貨保険は保険ごとに、払込をやめる年まで年払いの保険料を払い、返戻金はその年の解約返戻金表（保険simu）の金額で確定。受け取る年まで増やさずに一括で受け取る（今の為替レートで円換算。税金は考慮していない）。受け取るまでも、その年に解約したらもらえる額を資産に数える',
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
@@ -170,7 +181,7 @@ const MODEL_ASSUMPTIONS = [
   '子どもの生活費（教育費以外）・妊活・固定資産税・臨時の収入/支出はライフイベントで入れた分だけ。臨時の分は物価上昇を掛けない',
   'お金が足りないときは 預金 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）→ 投信 の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
-  '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇進などの昇給・昇給停止・減額・65歳以降の年収・引退）。昇給は手取りへの上乗せ額で入れ、伸び率と減額の割合はその額にも掛ける。65歳以降の年収は物価では増やさない',
+  '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇進などの昇給・昇給停止・減額・65歳以降の年収・引退）。昇給は「◯年後に手取り年◯円になる」で入れ、その年からは指定額に伸び率と減額の割合を掛ける。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
@@ -219,7 +230,9 @@ function runSim(p, events) {
     const homeEquity = homeEquityAt(home, t)
     data.push({
       age,
-      assets: Math.round(cash + invest + dc + ins),          // 使えるお金の合計（預金はマイナスもありうる）
+      // 使えるお金の合計（預金はマイナスもありうる）。DCは受け取る年齢までは引き出せないので入れない
+      assets: Math.round(cash + invest + ins + (age >= dcAge ? dc : 0)),
+      dcLocked: age < dcAge,
       cash: Math.round(cash), invest: Math.round(invest), dc: Math.round(dc), ins: Math.round(ins),
       home: Math.round(homeEquity),
       short: Math.round(Math.min(0, cash)),                   // 崩せるものを崩しても足りない額（累計）
@@ -550,7 +563,7 @@ function WorkFields({ title, w, ageNow, onChange, incomeAt }) {
     <NumInput className={`sim-mini-input ${wide ? 'sim-mini-input--wide' : 'sim-mini-input--age'}`} value={w[key]}
       onChange={v => onChange({ [key]: v })} />
   )
-  const checkpoints = [...new Set([ageNow, ...(w.raises || []).map(r => Number(r.fromAge)), Number(w.raiseStopAge), Number(w.reducedFrom), Number(w.lateFrom), Number(w.lateUntil)])]
+  const checkpoints = [...new Set([ageNow, ...(w.raises || []).map(r => (r.target != null ? ageNow + Number(r.years) : Number(r.fromAge))), Number(w.raiseStopAge), Number(w.reducedFrom), Number(w.lateFrom), Number(w.lateUntil)])]
     .filter(a => a >= ageNow).sort((a, b) => a - b)
   return (
     <div className="sim-event-body sim-work">
@@ -561,7 +574,15 @@ function WorkFields({ title, w, ageNow, onChange, incomeAt }) {
       <div className="sim-ef">
         {(w.raises || []).map(r => {
           const upd = (patch) => onChange({ raises: w.raises.map(x => (x.id === r.id ? { ...x, ...patch } : x)) })
-          return row(<>
+          return row(r.target != null ? <>
+            <span className="sim-ef-unit">昇給</span>
+            <NumInput className="sim-mini-input sim-mini-input--age" value={r.years} onChange={v => upd({ years: v })} />
+            <span className="sim-ef-unit">年後（{ageNow + Number(r.years || 0)}歳）に 手取り年</span>
+            <NumInput className="sim-mini-input sim-mini-input--wide" value={r.target} onChange={v => upd({ target: v })} />
+            <span className="sim-ef-unit">円になる</span>
+            <button type="button" className="sim-row-del" aria-label="この昇給を消す"
+              onClick={() => onChange({ raises: w.raises.filter(x => x.id !== r.id) })}>×</button>
+          </> : <>
             <span className="sim-ef-unit">昇給</span>
             <NumInput className="sim-mini-input sim-mini-input--age" value={r.fromAge} onChange={v => upd({ fromAge: v })} />
             <span className="sim-ef-unit">歳から 手取り年 ＋</span>
@@ -572,7 +593,7 @@ function WorkFields({ title, w, ageNow, onChange, incomeAt }) {
           </>, r.id)
         })}
         <button type="button" className="sim-choice-btn"
-          onClick={() => onChange({ raises: [...(w.raises || []), { id: `r${Date.now()}`, fromAge: ageNow + 2, amount: 0 }] })}>
+          onClick={() => onChange({ raises: [...(w.raises || []), { id: `r${Date.now()}`, years: 2, target: Math.round(incomeAt(ageNow)) }] })}>
           ＋ 昇給（昇進など）
         </button>
       </div>
@@ -618,7 +639,8 @@ const CustomTooltip = ({ active, payload, label }) => {
       <p className="sim-tt-row sim-tt-total"><span>使えるお金</span><span>{fmtSign(d.raw.assets)}</span></p>
       {SERIES.map(sr => (
         <p key={sr.key} className="sim-tt-row">
-          <span><i className="sim-tt-dot" style={{ background: sr.color }} />{sr.name}</span>
+          <span><i className="sim-tt-dot" style={{ background: sr.color }} />{sr.name}
+            {sr.key === 'dc' && d.raw.dcLocked && d.raw.dc > 0 && <small>（受け取るまで使えない）</small>}</span>
           <span>{fmtSign(d.raw[sr.key] || 0)}</span>
         </p>
       ))}
