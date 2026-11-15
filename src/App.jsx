@@ -16,9 +16,9 @@ import OutboxBadge from './components/OutboxBadge'
 import { LockButton } from './auth/AuthGate'
 import './App.css'
 
-// 使う頻度で5つに分ける：毎日見る「今月」／月1回の「入力」「資産」／面談前後の「将来」／年初の「設定」
+// 使う頻度で5つに分ける：毎日見る「予実」／月1回の「入力」「資産」／面談前後の「将来」／年初の「設定」
 const TABS = [
-  { id: 'month',    label: '今月' },
+  { id: 'month',    label: '予実' },
   { id: 'input',    label: '入力' },
   { id: 'assets',   label: '資産' },
   { id: 'future',   label: '将来' },
@@ -99,7 +99,7 @@ export default function App() {
         {activeTab === 'month' && (
           <>
             <AccView />
-            {/* 予算と実績・内訳の詳細。開いたときだけ読み込む */}
+            {/* 予実タブの下：予算と実績・内訳の詳細。開いたときだけ読み込む */}
             <details className="pay-detail" open={showPayDetail}
               onToggle={e => setShowPayDetail(e.currentTarget.open)}>
               <summary>📋 支払の詳細（予算と実績・内訳・カテゴリ別一覧）</summary>

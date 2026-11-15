@@ -132,7 +132,7 @@ body::before {
 }
 .subtab-btn:not(.active) .tab-badge { background: #F47920; color: #fff; }
 
-/* 今月タブの「支払の詳細」 */
+/* 予実タブの「支払の詳細」 */
 .pay-detail {
   margin-top: 16px;
   border: 1px solid #E2E8F0;

@@ -35,6 +35,26 @@ const fmtMan = (v) => `${+(v / 10000).toFixed(1)}万`
 
 const cumsum = (arr) => { let s = 0; return arr.map(v => (s += v)) }
 
+// ツールチップ。年間予算のバケットでは、その月までの累計実績（今年度・前年度）も出す
+function ChartTooltip({ active, payload, label, showCumulative }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div style={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0', background: '#fff', padding: '8px 10px' }}>
+      <p style={{ margin: '0 0 4px', fontWeight: 700 }}>{label}</p>
+      {payload.map(p => (
+        <p key={p.dataKey} style={{ margin: 0, color: p.color }}>{p.name} : {p.value == null ? '—' : yen(p.value)}</p>
+      ))}
+      {showCumulative && (
+        <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px dashed #E2E8F0' }}>
+          <p style={{ margin: 0, color: COLOR_ACTUAL }}>今年度の累計実績 : {d.今年度累計 == null ? '—' : yen(d.今年度累計)}</p>
+          <p style={{ margin: 0, color: COLOR_PREV }}>前年度の累計実績 : {yen(d.前年度累計)}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 1, 2, 2.5, 5, 10 × 10^n のうち raw 以上で最小のきりの良い目盛り幅
 function niceStep(raw) {
   if (!(raw > 0)) return 1
@@ -229,6 +249,8 @@ export default function BucketYearChart() {
     const prev     = isAnnualOnly ? prevBudgetByMonth : acc(actualByYearMonth[prevYear])
     const budget   = acc(budgetByMonth)
     const byBucket = Object.fromEntries(targetBuckets.map(b => [b.name, acc(actualByBucket[b.name])]))
+    const curCum  = cumsum(actualByYearMonth[currentYear])
+    const prevCum = cumsum(actualByYearMonth[prevYear])
     return MONTHS.map(m => ({
       month: `${m}月`,
       今年度実績: m <= currentMonth ? current[m - 1] : null,
@@ -237,6 +259,9 @@ export default function BucketYearChart() {
       ]))),
       前年度実績: prev[m - 1],
       今年度予算: budget[m - 1],
+      // ツールチップ専用（グラフには描かない）：1月からその月までの実績の合計
+      今年度累計: m <= currentMonth ? curCum[m - 1] : null,
+      前年度累計: prevCum[m - 1],
     }))
   }, [actualByYearMonth, actualByBucket, isStacked, isCumulative, targetBuckets, budgetByMonth, prevBudgetByMonth, isAnnualOnly, currentMonth, currentYear, prevYear])
 
@@ -313,10 +338,7 @@ export default function BucketYearChart() {
               })}
             />
           )}
-          <Tooltip
-            formatter={(v) => v == null ? '—' : yen(v)}
-            contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0' }}
-          />
+          <Tooltip content={<ChartTooltip showCumulative={isAnnualOnly} />} />
           <Legend iconType="plainline" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
           {isStacked
             ? targetBuckets.map((b, i) => (
