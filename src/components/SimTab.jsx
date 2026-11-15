@@ -239,8 +239,12 @@ function runSim(p, events) {
         const childAge = child.currentAge + t
         // 児童手当（2024年10月からの制度。所得制限なし）：0〜2歳 月1.5万、3〜18歳 月1万
         if (childAllowance && childAge >= 0 && childAge <= 18) allowance += (childAge < 3 ? 15_000 : 10_000) * 12
-        // 子どもの生活費（食費・衣類・おこづかいなど、教育費以外）を生まれてから指定の年齢まで
-        if (childAge >= 0 && childAge < (Number(child.livingUntil) || 22)) eventCost += (Number(child.livingMonthly) || 0) * 12 * infl
+        // 子どもの生活費（食費・衣類・おこづかいなど、教育費以外）。年齢の範囲ごとに月額を足す
+        if (childAge >= 0) {
+          for (const st of childLivingStages(child)) {
+            if (childAge >= Number(st.fromAge) && childAge <= Number(st.toAge)) eventCost += (Number(st.monthly) || 0) * 12 * infl
+          }
+        }
         if (childAge >= 6 && childAge < 22) {
           eventCost += EDU_COST[child.edu] / 16 * infl
         }
@@ -389,6 +393,13 @@ function calcRequiredExtra(simParams, events) {
 
 // ─── サブコンポーネント ─────────────────────────
 
+// 子どもの生活費の段階 [{ id, fromAge, toAge, monthly }]。旧形式（月額＋何歳まで）は1行に読み替える
+function childLivingStages(child) {
+  if (Array.isArray(child.livingStages)) return child.livingStages
+  const m = Number(child.livingMonthly) || 0
+  return m > 0 ? [{ id: 'old', fromAge: 0, toAge: (Number(child.livingUntil) || 22) - 1, monthly: m }] : []
+}
+
 function ChildEvent({ label, state, onChange }) {
   return (
     <div className="sim-event">
@@ -418,10 +429,29 @@ function ChildEvent({ label, state, onChange }) {
               ))}
             </select>
           </label>
-          <EventNumField label="生活費（教育費以外）" unit="円 / 月"
-            value={state.livingMonthly ?? 0} onChange={v => onChange(p => ({ ...p, livingMonthly: v }))} />
-          <EventNumField label="生活費がかかるのは" unit="歳まで"
-            value={state.livingUntil ?? 22} onChange={v => onChange(p => ({ ...p, livingUntil: v }))} />
+          <div className="sim-ef">
+            <span className="sim-ef-label">生活費（教育費以外）</span>
+            {childLivingStages(state).map(st => {
+              const upd = (patch) => onChange(p => ({ ...p, livingStages: childLivingStages(p).map(x => (x.id === st.id ? { ...x, ...patch } : x)) }))
+              return (
+                <div key={st.id} className="sim-ef-row sim-fundplan-row">
+                  <NumInput className="sim-mini-input sim-mini-input--age" value={st.fromAge} onChange={v => upd({ fromAge: v })} />
+                  <span className="sim-ef-unit">〜</span>
+                  <NumInput className="sim-mini-input sim-mini-input--age" value={st.toAge} onChange={v => upd({ toAge: v })} />
+                  <span className="sim-ef-unit">歳</span>
+                  <NumInput className="sim-mini-input sim-mini-input--wide" value={st.monthly} onChange={v => upd({ monthly: v })} />
+                  <span className="sim-ef-unit">円 / 月</span>
+                  <button type="button" className="sim-row-del" aria-label="この行を消す"
+                    onClick={() => onChange(p => ({ ...p, livingStages: childLivingStages(p).filter(x => x.id !== st.id) }))}>×</button>
+                </div>
+              )
+            })}
+            <button type="button" className="sim-choice-btn" onClick={() => onChange(p => {
+              const rows = childLivingStages(p)
+              const from = rows.length ? Number(rows.at(-1).toAge) + 1 : 0
+              return { ...p, livingStages: [...rows, { id: `c${Date.now()}`, fromAge: from, toAge: Math.max(from, 22), monthly: 0 }] }
+            })}>＋ 追加</button>
+          </div>
         </div>
       )}
     </div>
@@ -697,8 +727,8 @@ export default function SimTab() {
     base: 0,
     stages: [{ fromAge: 3, add: 0 }, { fromAge: 6, add: 0 }, { fromAge: 12, add: 0 }],
   })
-  const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立', livingMonthly: 0, livingUntil: 22 })
-  const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立', livingMonthly: 0, livingUntil: 22 })
+  const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立', livingStages: [] })
+  const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立', livingStages: [] })
   const [ninkatsu, setNinkatsu] = useState({ enabled: false, yearsFromNow: 1, years: 1, annual: 1_500_000 })
   const [oneOffs, setOneOffs] = useState([])     // 臨時の収入・支出 [{ id, year(西暦), kind: income|expense, amount, memo }]
   const [fundPlan, setFundPlan] = useState(null) // 投信の計画 [{ id, kind: invest|withdraw, fromAge, toAge, amount }]。null は資産タブの積立のまま
@@ -739,8 +769,8 @@ export default function SimTab() {
             const { retirementBonus: _old, insuranceAge: _oldIns, ...rest } = s.params
             setParams(p => ({ ...p, ...rest }))
           }
-          if (s.child1) setChild1(c => ({ ...c, ...s.child1 }))
-          if (s.child2) setChild2(c => ({ ...c, ...s.child2 }))
+          if (s.child1) setChild1(c => ({ ...c, ...s.child1, livingStages: childLivingStages(s.child1) }))
+          if (s.child2) setChild2(c => ({ ...c, ...s.child2, livingStages: childLivingStages(s.child2) }))
           if (s.car)    setCar(c => ({ ...c, ...s.car }))
           if (s.dog)    setDog(d => ({ ...d, ...s.dog }))
           if (s.home)   setHome(h => ({ ...h, ...s.home }))
