@@ -17,7 +17,7 @@ const DETAIL = [
   { group: '支出', cls: 'out', cols: [
     ['living', '生活'], ['childLiving', '子供生活'], ['dog', 'ワン'], ['housing', '家賃/ローン'],
     ['homeKeep', '固定資産税・維持'], ['yutori', 'ときめき冒険'], ['ninkatsu', '妊活'],
-    ['homeBuy', '頭金・諸経費'], ['car', '車'], ['edu', '教育費'], ['premium', '保険料'], ['oneOff', '臨時'],
+    ['homeDown', '頭金'], ['car', '車'], ['edu', '教育費'], ['premium', '保険料'], ['oneOff', '臨時'],
   ] },
   { group: '投資', cls: 'mv', cols: [
     ['fundInvest', '積立'], ['withdrawn', '取り崩し'], ['autoDraw', '計画外'],

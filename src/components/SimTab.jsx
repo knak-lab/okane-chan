@@ -104,6 +104,8 @@ function propertyTaxAt(home, k) {
 }
 // 諸経費（現金で払う）。「家」タブで金額を入れていればその額、なければ物件価格×諸経費率
 const homeFee = (home) => (home.miscCost != null ? Number(home.miscCost) : homePrice(home) * Number(home.feeRate) / 100)
+// 借入金＝土地＋建物＋諸経費−頭金（諸経費もローンに入れ、頭金で相殺する）
+const loanPrincipal = (home) => homePrice(home) + homeFee(home) - Number(home.downPayment)
 
 // 元利均等返済の年間返済額
 function annualLoanPayment(principal, ratePercent, years) {
@@ -173,6 +175,7 @@ const MODEL_ASSUMPTIONS = [
   'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
+  '借入金は 土地＋建物＋諸経費−頭金（諸経費もローンに入れ、頭金で相殺）。購入の年に現金で払うのは頭金だけ',
   '住宅ローン控除は「年末のローン残高（借入限度額まで）× 0.7%」を購入から13年間、税金が戻る収入として入れる（払う税金より多くは戻らない点は考えていない）。固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
   '相続・贈与・親の援助や介護、iDeCo/NISAの税制差は入っていない',
   '家賃は購入しない限り老後もずっと同額（物価上昇分は上がる）',
@@ -203,7 +206,7 @@ function runSim(p, events) {
 
   const home = events?.home
   const homeLoan = home?.enabled
-    ? annualLoanPayment(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears))
+    ? annualLoanPayment(loanPrincipal(home), home.loanRate, Number(home.loanYears))
     : 0
   // 外貨保険を一部解約したときの残りの割合（足りないときに崩すと減る。返戻金・保険料も同じ割合で減る）
   let insFactor = 1
@@ -302,12 +305,15 @@ function runSim(p, events) {
       if (home?.enabled) {
         const bought = Number(home.yearsFromNow)
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
-        if (t === bought) cost('homeBuy', Number(home.downPayment) + homeFee(home))
+        // 購入の年に払うのは頭金だけ。諸経費は借入金に入っている
+        if (t === bought) cost('homeDown', Number(home.downPayment))
         if (t >= bought && t < bought + Number(home.loanYears)) cost('loan', homeLoan)
         // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
         const deductYears = Number(home.deductYears ?? 13)
         if (t >= bought && t < bought + deductYears) {
-          const balance = loanBalance(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears), t - bought + 1)
+          // 控除の対象は家（土地・建物）の分だけ。諸経費の分は借入金の割合で除く
+          const share = homePrice(home) > 0 ? homePrice(home) / (homePrice(home) + homeFee(home)) : 0
+          const balance = loanBalance(loanPrincipal(home), home.loanRate, Number(home.loanYears), t - bought + 1) * share
           const d = Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
           allowance += d
           b.loanDeduct = d
@@ -374,14 +380,14 @@ function runSim(p, events) {
       allowance: R(b.childAllowance || 0), loanDeduct: R(b.loanDeduct || 0),
       otherIncome: R(lump + dcPay + extraIncome),
       living: R(monthlyExpense * livingRate * 12 * infl), yutori: R(yutoriAnnual * livingRate * infl),
-      housing: R(rentNet + (b.loan || 0)), homeKeep: R((b.homeKeep || 0) + (b.propertyTax || 0)), homeBuy: R(b.homeBuy || 0),
+      housing: R(rentNet + (b.loan || 0)), homeKeep: R((b.homeKeep || 0) + (b.propertyTax || 0)), homeDown: R(b.homeDown || 0),
       childLiving: R(b.childLiving || 0), edu: R(b.edu || 0), car: R(b.car || 0), dog: R(b.dog || 0),
       ninkatsu: R(b.ninkatsu || 0), oneOff: R(b.oneOff || 0), premium: R(premium),
       fundInvest: R(fundInvest), withdrawn: R(withdrawn), autoDraw: R(autoIns + autoInvest),
       endCash: R(cash), endInvest: R(invest), endDc: R(dc), endIns: R((insuranceValues[age + 1] || 0) * insFactor),
     }
     flow.income = flow.incomeMe + flow.incomeWife + flow.pension + flow.allowance + flow.loanDeduct + flow.otherIncome
-    flow.expense = flow.living + flow.yutori + flow.housing + flow.homeKeep + flow.homeBuy + flow.childLiving + flow.edu
+    flow.expense = flow.living + flow.yutori + flow.housing + flow.homeKeep + flow.homeDown + flow.childLiving + flow.edu
       + flow.car + flow.dog + flow.ninkatsu + flow.oneOff + flow.premium
     flow.balance = flow.income - flow.expense
     flow.endTotal = flow.endCash + flow.endInvest + flow.endDc + flow.endIns
@@ -401,7 +407,7 @@ function homeEquityAt(home, t) {
   const life = Math.max(1, Number(home.buildingLife) || 30)
   const residual = Math.min(100, Math.max(0, Number(home.buildingResidual) || 0)) / 100
   const building = Number(home.buildingPrice) * Math.max(residual, 1 - (k / life) * (1 - residual))
-  return land + building - loanBalance(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears), k)
+  return land + building - loanBalance(loanPrincipal(home), home.loanRate, Number(home.loanYears), k)
 }
 
 // 元利均等返済で k 年払ったあとのローン残高
@@ -1138,7 +1144,7 @@ export default function SimTab() {
   const homeOn           = homeEff.enabled && Number(homeEff.yearsFromNow) <= retireT
   const homeLoanEndAge   = homeOn ? params.currentAge + Number(homeEff.yearsFromNow) + Number(homeEff.loanYears) : null
   const homeLoanMonthly  = homeOn
-    ? annualLoanPayment(homePrice(homeEff) - Number(homeEff.downPayment), homeEff.loanRate, Number(homeEff.loanYears)) / 12
+    ? annualLoanPayment(loanPrincipal(homeEff), homeEff.loanRate, Number(homeEff.loanYears)) / 12
     : 0
   const retireRent       = homeOn && homeEff.stopRent ? 0 : params.monthlyRent
   const retireHomeCost   = homeOn ? Number(homeEff.monthlyCost) : 0
@@ -1659,8 +1665,8 @@ export default function SimTab() {
                   </>
                 )}
                 {homeEff.miscCost != null
-                  ? <p className="sim-ef-note">諸経費 {fmt(homeEff.miscCost)}（「家」タブで入力した額。現金で払う）</p>
-                  : <EventNumField label="諸経費" unit="% （物件価格に対して。「家」タブで金額を入れるとそちらを使う）"
+                  ? <p className="sim-ef-note">諸経費 {fmt(homeEff.miscCost)}（「家」タブで入力した額。借入金に入れる）</p>
+                  : <EventNumField label="諸経費" unit="% （物件価格に対して。借入金に入れる。「家」タブで金額を入れるとそちらを使う）"
                       value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />}
                 <EventNumField label="ローン期間" unit="年"
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
@@ -1692,7 +1698,7 @@ export default function SimTab() {
                   <span className="sim-ef-label">購入後は家賃（{fmt(params.monthlyRent)}/月）がなくなる</span>
                 </label>
                 <p className="sim-ef-note">
-                  物件価格 {fmt(homePrice(homeEff))} ／ 諸経費 {fmt(homeFee(homeEff))} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(homeEff) - homeEff.downPayment, homeEff.loanRate, homeEff.loanYears) / 12)}
+                  物件価格 {fmt(homePrice(homeEff))} ／ 諸経費 {fmt(homeFee(homeEff))} ／ 借入金 {fmt(loanPrincipal(homeEff))} ／ 月々のローン返済 {fmt(annualLoanPayment(loanPrincipal(homeEff), homeEff.loanRate, homeEff.loanYears) / 12)}
                   （価格は購入時の金額。ローン返済額は物価上昇させない。修繕費は物価上昇込み）
                 </p>
               </div>
