@@ -1,0 +1,86 @@
+/* LPの年ごとの表 */
+.lpy-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.lpy-unit { font-size: 0.72rem; color: #8b949e; margin-right: auto; }
+.lpy-btn {
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #003087;
+  background: #fff;
+  border: 1px solid #c9d3e6;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.lpy-btn.active { color: #fff; background: #003087; border-color: #003087; }
+
+.lpy-scroll {
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.lpy-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 100%;
+}
+.lpy-table th,
+.lpy-table td {
+  padding: 4px 8px;
+  text-align: right;
+  border-bottom: 1px solid #f0f0f0;
+}
+.lpy-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f6f8fa;
+  color: #57606a;
+  font-weight: 600;
+  text-align: center;
+}
+.lpy-table--detail thead tr:nth-child(2) th { top: 25px; }
+.lpy-table .lpy-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #fff;
+  text-align: left;
+  font-weight: 600;
+}
+.lpy-table thead .lpy-sticky { z-index: 3; background: #f6f8fa; }
+.lpy-table thead .lpy-in  { color: #1a7f37; }
+.lpy-table thead .lpy-out { color: #cf222e; }
+.lpy-table thead .lpy-mv  { color: #8250df; }
+.lpy-table thead .lpy-bal { color: #003087; }
+.lpy-group { border-left: 1px solid #e1e4e8; }
+.lpy-sub { color: #8b949e; font-size: 0.68rem; }
+.lpy-strong { font-weight: 700; }
+.lpy-neg { color: #cf222e; }
+.lpy-row--auto td { background: #fff8e1; }
+.lpy-row--auto .lpy-sticky { background: #fff8e1; }
+.lpy-note, .lpy-hint { font-size: 0.7rem; color: #8b949e; margin: 6px 0 0; }
+
+/* 全画面（使えない端末では画面いっぱいの重ね表示） */
+.lpy-full {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: #fff;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.lpy-full .lpy-scroll { flex: 1; max-height: none; }
+.lpy-full .lpy-table { font-size: 0.8rem; }

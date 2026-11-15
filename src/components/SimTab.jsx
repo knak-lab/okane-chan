@@ -9,6 +9,7 @@ import { HOMEST_EMBED_URL, fromHomest } from '../utils/homest'
 import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
 import LPCheck from './LPCheck'
+import LPYearTable from './LPYearTable'
 import {
   DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField, checkPlan, seekAll,
 } from '../utils/lpChecks'
@@ -212,8 +213,9 @@ function runSim(p, events) {
 
     const children      = events ? [events.child1, events.child2] : []
     // 収入は退職年齢ではなく、夫婦それぞれの働き方（年齢）で決まる
-    const annualIncome  = workIncomeAt(myIncome, work.me, age, startAge, incomeGrowth)
-      + workIncomeAt(wifeIncomeAt(wife, children, t), work.wife, wifeAge + t, wifeAge, incomeGrowth)
+    const incomeMe      = workIncomeAt(myIncome, work.me, age, startAge, incomeGrowth)
+    const incomeWife    = workIncomeAt(wifeIncomeAt(wife, children, t), work.wife, wifeAge + t, wifeAge, incomeGrowth)
+    const annualIncome  = incomeMe + incomeWife
     const fundInvest    = fundPlan
       ? planRows('invest', age).reduce((s, r) => s + (Number(r.amount) || 0) * 12, 0)
       : (retired ? 0 : monthlyFundInvest * 12)
@@ -229,8 +231,10 @@ function runSim(p, events) {
     const pensionAdj = pensionStartAge >= 65 ? 1 + 0.007 * 12 * (pensionStartAge - 65) : 1 - 0.004 * 12 * (65 - pensionStartAge)
     const annualPension = (hasPension ? pensionMonthly * pensionAdj * 12 * infl : 0) + wifePension  // 働いていても受け取る（在職老齢年金の減額は考えない）
 
-    // ライフイベントコスト
+    // ライフイベントコスト。表に出すため項目ごとにも記録する（b）
     let eventCost = 0
+    const b = {}
+    const cost = (key, v) => { eventCost += v; b[key] = (b[key] || 0) + v }
     let allowance = 0  // 児童手当・住宅ローン控除（税金が戻る分）など、制度で入ってくるお金
     let extraIncome = 0  // 臨時の収入
     if (events) {
@@ -238,15 +242,19 @@ function runSim(p, events) {
         if (!child.enabled) continue
         const childAge = child.currentAge + t
         // 児童手当（2024年10月からの制度。所得制限なし）：0〜2歳 月1.5万、3〜18歳 月1万
-        if (childAllowance && childAge >= 0 && childAge <= 18) allowance += (childAge < 3 ? 15_000 : 10_000) * 12
+        if (childAllowance && childAge >= 0 && childAge <= 18) {
+          const a = (childAge < 3 ? 15_000 : 10_000) * 12
+          allowance += a
+          b.childAllowance = (b.childAllowance || 0) + a
+        }
         // 子どもの生活費（食費・衣類・おこづかいなど、教育費以外）。年齢の範囲ごとに月額を足す
         if (childAge >= 0) {
           for (const st of childLivingStages(child)) {
-            if (childAge >= Number(st.fromAge) && childAge <= Number(st.toAge)) eventCost += (Number(st.monthly) || 0) * 12 * infl
+            if (childAge >= Number(st.fromAge) && childAge <= Number(st.toAge)) cost('childLiving', (Number(st.monthly) || 0) * 12 * infl)
           }
         }
         if (childAge >= 6 && childAge < 22) {
-          eventCost += EDU_COST[child.edu] / 16 * infl
+          cost('edu', EDU_COST[child.edu] / 16 * infl)
         }
       }
       const c = events.car
@@ -256,45 +264,48 @@ function runSim(p, events) {
         const first = Number(c.yearsFromNow)
         const cycle = Number(c.replaceEvery)
         const isPurchase = t === first || (cycle > 0 && t > first && (t - first) % cycle === 0)
-        if (isPurchase) eventCost += Number(c.price) * infl
-        if (t >= first) eventCost += Number(c.monthlyFee) * 12 * infl
+        if (isPurchase) cost('car', Number(c.price) * infl)
+        if (t >= first) cost('car', Number(c.monthlyFee) * 12 * infl)
       }
       const dog = events.dog
       if (dog?.enabled) {
         const from = Number(dog.yearsFromNow)
-        if (t === from) eventCost += Number(dog.initialCost) * infl
-        if (t >= from && t < from + Number(dog.years)) eventCost += Number(dog.annualCost) * infl
+        if (t === from) cost('dog', Number(dog.initialCost) * infl)
+        if (t >= from && t < from + Number(dog.years)) cost('dog', Number(dog.annualCost) * infl)
       }
       const nk = events.ninkatsu
       if (nk?.enabled) {
         const from = Number(nk.yearsFromNow)
-        if (t >= from && t < from + (Number(nk.years) || 0)) eventCost += (Number(nk.annual) || 0) * infl
+        if (t >= from && t < from + (Number(nk.years) || 0)) cost('ninkatsu', (Number(nk.annual) || 0) * infl)
       }
       // 臨時の収入・支出（その年の金額のまま。物価上昇は掛けない）
       for (const o of events.oneOffs || []) {
         if (Number(o.year) !== thisYear + t) continue
         if (o.kind === 'income') extraIncome += Number(o.amount) || 0
-        else eventCost += Number(o.amount) || 0
+        else cost('oneOff', Number(o.amount) || 0)
       }
       if (home?.enabled) {
         const bought = Number(home.yearsFromNow)
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
-        if (t === bought) eventCost += Number(home.downPayment) + homePrice(home) * Number(home.feeRate) / 100
-        if (t >= bought && t < bought + Number(home.loanYears)) eventCost += homeLoan
+        if (t === bought) cost('homeBuy', Number(home.downPayment) + homePrice(home) * Number(home.feeRate) / 100)
+        if (t >= bought && t < bought + Number(home.loanYears)) cost('loan', homeLoan)
         // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
         const deductYears = Number(home.deductYears ?? 13)
         if (t >= bought && t < bought + deductYears) {
           const balance = loanBalance(homePrice(home) - Number(home.downPayment), home.loanRate, Number(home.loanYears), t - bought + 1)
-          allowance += Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
+          const d = Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
+          allowance += d
+          b.loanDeduct = d
         }
         if (t >= bought) {
-          eventCost += (Number(home.monthlyCost) * 12 + (Number(home.propertyTax) || 0)) * infl
+          cost('homeKeep', Number(home.monthlyCost) * 12 * infl)
+          cost('propertyTax', (Number(home.propertyTax) || 0) * infl)
           // 購入後は家賃が不要になる分、手元に残る
-          if (home.stopRent) eventCost -= monthlyRent * 12 * infl
+          if (home.stopRent) cost('rentStop', -monthlyRent * 12 * infl)
         }
         // 外壁・屋根・水回りなどの大規模修繕を購入から一定年数ごとに計上
         const repairEvery = Number(home.repairEvery)
-        if (repairEvery > 0 && t > bought && (t - bought) % repairEvery === 0) eventCost += Number(home.repairCost) * infl
+        if (repairEvery > 0 && t > bought && (t - bought) % repairEvery === 0) cost('homeKeep', Number(home.repairCost) * infl)
       }
     }
 
@@ -340,6 +351,26 @@ function runSim(p, events) {
     }
     // 計画外の取り崩し（預金が足りずに自動で崩した額）。LPチェックで見直しを促す
     Object.assign(data[data.length - 1], { autoIns: Math.round(autoIns), autoInvest: Math.round(autoInvest), fundInvest, withdrawn: Math.round(withdrawn) })
+    // 年ごとの表の内訳（収入・支出・投資の移動・年末の残高）
+    const R = Math.round
+    const rentNet = monthlyRent * 12 * infl + (b.rentStop || 0)
+    const flow = {
+      incomeMe: R(incomeMe), incomeWife: R(incomeWife), pension: R(annualPension),
+      allowance: R(b.childAllowance || 0), loanDeduct: R(b.loanDeduct || 0),
+      otherIncome: R(lump + dcPay + extraIncome),
+      living: R(monthlyExpense * livingRate * 12 * infl), yutori: R(yutoriAnnual * livingRate * infl),
+      housing: R(rentNet + (b.loan || 0)), homeKeep: R((b.homeKeep || 0) + (b.propertyTax || 0)), homeBuy: R(b.homeBuy || 0),
+      childLiving: R(b.childLiving || 0), edu: R(b.edu || 0), car: R(b.car || 0), dog: R(b.dog || 0),
+      ninkatsu: R(b.ninkatsu || 0), oneOff: R(b.oneOff || 0), premium: R(premium),
+      fundInvest: R(fundInvest), withdrawn: R(withdrawn), autoDraw: R(autoIns + autoInvest),
+      endCash: R(cash), endInvest: R(invest), endDc: R(dc), endIns: R((insuranceValues[age + 1] || 0) * insFactor),
+    }
+    flow.income = flow.incomeMe + flow.incomeWife + flow.pension + flow.allowance + flow.loanDeduct + flow.otherIncome
+    flow.expense = flow.living + flow.yutori + flow.housing + flow.homeKeep + flow.homeBuy + flow.childLiving + flow.edu
+      + flow.car + flow.dog + flow.ninkatsu + flow.oneOff + flow.premium
+    flow.balance = flow.income - flow.expense
+    flow.endTotal = flow.endCash + flow.endInvest + flow.endDc + flow.endIns
+    data[data.length - 1].flow = flow
     data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
     data[data.length - 1].allowance = Math.round(allowance)
   }
@@ -1282,6 +1313,9 @@ export default function SimTab() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* 年ごとの表（開閉式・全画面） */}
+      <LPYearTable sim={sim} wifeAge={params.wifeAge} kids={[child1, child2]} />
 
       {/* LPチェック（AIなし） */}
       <LPCheck checks={checks} results={whatIfResults} simParams={simParams} events={events}
