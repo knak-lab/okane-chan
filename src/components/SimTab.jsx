@@ -138,7 +138,7 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 // 手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
 // DC（企業型確定拠出年金）が退職金。掛金は給与天引き・会社拠出なので手取りからは引かず、定年まで DC に入る。
 //   受け取るまでは取り崩せない。受け取り方は一時金（全額を投資へ移す）か年金（何年かに分けて預金へ）。
-// 預金が尽きたら投資を取り崩す。
+// お金が足りないときは 預金 → 外貨保険（一部解約）→ 投資 の順に崩す。
 // 支出・年金・イベント費用は物価上昇率、収入は収入の伸び率で毎年増やす（ローン返済額は固定）。
 // AI診断に渡す「このシミュレーションが計算に入れていないもの・単純化している前提」
 // runSim を変えたらここも合わせて直す
@@ -148,7 +148,7 @@ const MODEL_ASSUMPTIONS = [
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
-  'お金が足りないときは 預金 → 投信 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
+  'お金が足りないときは 預金 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）→ 投信 の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
@@ -156,7 +156,6 @@ const MODEL_ASSUMPTIONS = [
   '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
   '住宅ローン控除は「年末のローン残高（借入限度額まで）× 0.7%」を購入から13年間、税金が戻る収入として入れる（払う税金より多くは戻らない点は考えていない）。固定資産税（月額維持費に含めていなければ）・団信・繰上げ返済は入っていない',
-  '預金は生活費の○か月分（預金の上限）を超えた分を、毎年投信に回す（0にすると回さない）',
   '相続・贈与・親の援助や介護、iDeCo/NISAの税制差は入っていない',
   '家賃は購入しない限り老後もずっと同額（物価上昇分は上がる）',
 ]
@@ -169,7 +168,7 @@ function runSim(p, events) {
           insuranceLumps = [], retireExpenseRate = 100,
           fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
           work = DEFAULT_WORK, insurancePremiums = [], insuranceValues = {},
-          cashBufferMonths = 0, childAllowance = true } = p
+          childAllowance = true } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -293,23 +292,18 @@ function runSim(p, events) {
 
     invest += Math.max(0, invest) * rInvest + fundInvest + extra
     cash   += Math.max(0, cash) * rCash + annualIncome + allowance - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay
-    // 足りないときに崩す順番：預金 → 投信 → 外貨保険（一部解約）。DCは受け取るまで崩せない
-    if (cash < 0 && invest > 0) {
-      const draw = Math.min(invest, -cash)
-      invest -= draw
-      cash   += draw
-    }
+    // 足りないときに崩す順番：預金 → 外貨保険（一部解約）→ 投信。DCは受け取るまで崩せない
+    // 保険を計画的にやめるなら、LPの外貨保険で保険ごとに「受け取る年」を指定する（ここは預金が尽きたときの備え）
     const insNext = (insuranceValues[age + 1] || 0) * insFactor
     if (cash < 0 && insNext > 0) {
       const draw = Math.min(insNext, -cash)
       insFactor *= 1 - draw / insNext
       cash += draw
     }
-    // 預金の上限：生活費の○か月分を超えた預金は投信へ回す（寝かせておかない）
-    const buffer = annualExpense / 12 * (Number(cashBufferMonths) || 0)
-    if (Number(cashBufferMonths) > 0 && cash > buffer) {
-      invest += cash - buffer
-      cash = buffer
+    if (cash < 0 && invest > 0) {
+      const draw = Math.min(invest, -cash)
+      invest -= draw
+      cash   += draw
     }
     data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
     data[data.length - 1].allowance = Math.round(allowance)
@@ -572,7 +566,6 @@ export default function SimTab() {
     pensionStartAge: 65,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
     minMonths:       6,     // 合格ライン：手元のお金が生活費の何か月分を割らないか
-    cashBufferMonths: 12,   // 預金の上限：生活費の何か月分を超えたら投信へ回すか（0で回さない）
     childAllowance:  true,  // 児童手当を収入に入れる
     targetAtEnd:     0,     // 合格ライン：想定寿命の年に残したい額（使えるお金）
     dcReceiveAge:    60,    // DC（退職金）を受け取る年齢
@@ -897,7 +890,6 @@ export default function SimTab() {
     work,
     insurancePremiums: insPolicies.filter(x => x.times > 0),
     insuranceValues,
-    cashBufferMonths: params.cashBufferMonths,
     childAllowance:  params.childAllowance,
   }), [params, vals, wife, work, insPolicies, insuranceValues])
 
@@ -1247,10 +1239,8 @@ export default function SimTab() {
         summary={`預金${man(vals.cashAssets)}・投信${man(vals.fundAssets)}・DC${man(vals.dcAssets)}・保険${man(insuranceValueNow)}`}>
         <div className="sim-fields">
           <Field label="預金" unit="円" note="預金金利で増える" fetched wide value={vals.cashAssets} onChange={setV('cashAssets')} />
-          <Field label="投資信託" unit="円" note="評価額。預金が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
+          <Field label="投資信託" unit="円" note="評価額。預金と保険が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
           <Field label="投信積立" unit="円 / 月" note="手取りから。定年まで" fetched wide value={vals.monthlyFundInvest} onChange={setV('monthlyFundInvest')} />
-          <Field label="預金の上限" unit="か月分" note="生活費のこの月数を超えた預金は、毎年投信へ回す（0で回さない）"
-            value={params.cashBufferMonths} onChange={setP('cashBufferMonths')} />
         </div>
         <div className="sim-subhead">DC（企業型確定拠出年金）＝退職金 <span className="sim-section-note">受け取るまでは取り崩せない</span></div>
         <div className="sim-fields">
