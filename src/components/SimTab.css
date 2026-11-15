@@ -411,3 +411,9 @@
 .sim-seek-label { font-weight: 600; min-width: 11em; }
 .sim-seek-none { color: #999; }
 .sim-seek-add { margin-left: auto; border: 1px solid #9fb0d6; background: #fff; color: #003087; border-radius: 6px; font-size: 0.72rem; padding: 0.15rem 0.5rem; cursor: pointer; }
+
+/* 投信の計画・臨時の収入支出の行 */
+.sim-fundplan { margin-top: 12px; }
+.sim-fundplan-row { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
+.sim-row-del { border: none; background: none; color: #94A3B8; font-size: 1rem; cursor: pointer; padding: 0 4px; }
+.sim-oneoff-memo { width: 9em; text-align: left; }

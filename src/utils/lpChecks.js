@@ -131,6 +131,24 @@ export function planChecks(lp) {
   if (r.plan && !r.plan.endOk) add('warn', `${r.plan.endAge}歳で使えるお金が ${yen(r.plan.endAssets)}（残したい額 ${yen(r.targetAtEnd)} に届かない）`)
   if (r.plan?.maxShort < 0) add('ng', `預金・投信・外貨保険を崩しても、最大で ${yen(r.plan.maxShort)} 足りない（グラフの赤）`)
 
+  // 計画外の取り崩し（預金が足りずに自動で崩した年）
+  const ranges = (rows) => {
+    const rs = []
+    for (const d of rows) {
+      const last = rs.at(-1)
+      if (last && d.age === last.to + 1) last.to = d.age
+      else rs.push({ from: d.age, to: d.age })
+    }
+    return rs.map(x => (x.from === x.to ? `${x.from}歳` : `${x.from}〜${x.to}歳`)).join('・')
+  }
+  const series = r.series || []
+  const autoInv = series.filter(d => d.autoInvest > 0)
+  if (autoInv.length) add('warn', `預金が足りず、${ranges(autoInv)}で計画外に投信を計${man(autoInv.reduce((s, d) => s + d.autoInvest, 0))}崩している（投信の計画に取り崩しを入れるか、積立を減らす）`)
+  const autoInsRows = series.filter(d => d.autoIns > 0)
+  if (autoInsRows.length) add('warn', `預金が足りず、${ranges(autoInsRows)}で外貨保険を計${man(autoInsRows.reduce((s, d) => s + d.autoIns, 0))}解約している（受け取る年を早めるか、投信の計画を見直す）`)
+  const both = series.filter(d => d.fundInvest > 0 && d.autoInvest > 0)
+  if (both.length) add('info', `${ranges(both)}は投信に積み立てながら、同じ年に投信を崩している`)
+
   const premiumLeft = (lp.dataMeta?.premiums || []).filter(x => x.times > 0)
   if (premiumLeft.length) {
     const total = premiumLeft.reduce((s, x) => s + x.total, 0)
@@ -161,7 +179,6 @@ export const WHATIF_FIELDS = [
   { key: 'monthlyExpense',    label: '生活費（安心＋彩り）', unit: '円/月', target: 'p' },
   { key: 'yutoriAnnual',      label: 'ときめき＋冒険',       unit: '円/年', target: 'p' },
   { key: 'monthlyRent',       label: '家賃',                 unit: '円/月', target: 'p' },
-  { key: 'monthlyFundInvest', label: '投信積立',             unit: '円/月', target: 'p' },
   { key: 'extraSaving',       label: '追加の積立',           unit: '円/月', target: 'p' },
   { key: 'lifeExpectancy',    label: '想定寿命',             unit: '歳',   target: 'p', simKey: 'endAge' },
   { key: 'meRaiseStopAge',    label: 'あなたの昇給が止まる年齢', unit: '歳',  target: 'work', who: 'me',   field: 'raiseStopAge' },

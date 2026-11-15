@@ -148,6 +148,8 @@ const MODEL_ASSUMPTIONS = [
   '収入は手取りベース。税・社会保険料の変化（退職後の住民税・国保など）は個別に計算していない',
   '公的年金は物価上昇率でそのまま増える（マクロ経済スライドによる目減りは考慮していない）',
   '投資は投信・DCとも同じ想定利回りで毎年一定に増える（暴落・順序リスクなし）',
+  '投信は「投信の計画」の積立（月額・年齢の範囲）と取り崩し（年額）どおりに動かす。計画が無ければ資産タブの積立額を退職まで続ける',
+  '子どもの生活費（教育費以外）・妊活・固定資産税・臨時の収入/支出はライフイベントで入れた分だけ。臨時の分は物価上昇を掛けない',
   'お金が足りないときは 預金 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）→ 投信 の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
@@ -168,7 +170,7 @@ function runSim(p, events) {
           insuranceLumps = [], retireExpenseRate = 100,
           fundAssets = 0, dcAssets = 0, dcReceiveAge = 60, dcMode = 'lump', dcYears = 10,
           work = DEFAULT_WORK, insurancePremiums = [], insuranceValues = {},
-          childAllowance = true } = p
+          childAllowance = true, fundPlan = null } = p
   if (endAge < startAge) return []
   const rInvest = (returnRate || 0) / 100
   const rCash   = (cashRate || 0) / 100
@@ -179,6 +181,9 @@ function runSim(p, events) {
   const dcAge = Math.max(Number(dcReceiveAge) || startAge, startAge)
   let dcPaysLeft = 0
   const data = []
+  const thisYear = new Date().getFullYear()
+  // 投信の計画（積立・取り崩し）。計画が無ければ、資産タブの積立額を退職まで続ける
+  const planRows = (kind, age) => (fundPlan || []).filter(r => r.kind === kind && age >= Number(r.fromAge) && age <= Number(r.toAge))
 
   const home = events?.home
   const homeLoan = home?.enabled
@@ -209,7 +214,10 @@ function runSim(p, events) {
     // 収入は退職年齢ではなく、夫婦それぞれの働き方（年齢）で決まる
     const annualIncome  = workIncomeAt(myIncome, work.me, age, startAge, incomeGrowth)
       + workIncomeAt(wifeIncomeAt(wife, children, t), work.wife, wifeAge + t, wifeAge, incomeGrowth)
-    const fundInvest    = retired ? 0 : monthlyFundInvest * 12
+    const fundInvest    = fundPlan
+      ? planRows('invest', age).reduce((s, r) => s + (Number(r.amount) || 0) * 12, 0)
+      : (retired ? 0 : monthlyFundInvest * 12)
+    const fundWithdraw  = planRows('withdraw', age).reduce((s, r) => s + (Number(r.amount) || 0), 0)
     const dcInvest      = retired ? 0 : monthlyDCInvest * 12
     const extra         = retired ? 0 : extraSaving * 12  // 追加必要積立額の逆算用
     // 退職後は生活費（安心＋彩り）とときめき＋冒険を割合で調整。家賃は対象外
@@ -224,12 +232,15 @@ function runSim(p, events) {
     // ライフイベントコスト
     let eventCost = 0
     let allowance = 0  // 児童手当・住宅ローン控除（税金が戻る分）など、制度で入ってくるお金
+    let extraIncome = 0  // 臨時の収入
     if (events) {
       for (const child of [events.child1, events.child2]) {
         if (!child.enabled) continue
         const childAge = child.currentAge + t
         // 児童手当（2024年10月からの制度。所得制限なし）：0〜2歳 月1.5万、3〜18歳 月1万
         if (childAllowance && childAge >= 0 && childAge <= 18) allowance += (childAge < 3 ? 15_000 : 10_000) * 12
+        // 子どもの生活費（食費・衣類・おこづかいなど、教育費以外）を生まれてから指定の年齢まで
+        if (childAge >= 0 && childAge < (Number(child.livingUntil) || 22)) eventCost += (Number(child.livingMonthly) || 0) * 12 * infl
         if (childAge >= 6 && childAge < 22) {
           eventCost += EDU_COST[child.edu] / 16 * infl
         }
@@ -250,6 +261,17 @@ function runSim(p, events) {
         if (t === from) eventCost += Number(dog.initialCost) * infl
         if (t >= from && t < from + Number(dog.years)) eventCost += Number(dog.annualCost) * infl
       }
+      const nk = events.ninkatsu
+      if (nk?.enabled) {
+        const from = Number(nk.yearsFromNow)
+        if (t >= from && t < from + (Number(nk.years) || 0)) eventCost += (Number(nk.annual) || 0) * infl
+      }
+      // 臨時の収入・支出（その年の金額のまま。物価上昇は掛けない）
+      for (const o of events.oneOffs || []) {
+        if (Number(o.year) !== thisYear + t) continue
+        if (o.kind === 'income') extraIncome += Number(o.amount) || 0
+        else eventCost += Number(o.amount) || 0
+      }
       if (home?.enabled) {
         const bought = Number(home.yearsFromNow)
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
@@ -262,7 +284,7 @@ function runSim(p, events) {
           allowance += Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
         }
         if (t >= bought) {
-          eventCost += Number(home.monthlyCost) * 12 * infl
+          eventCost += (Number(home.monthlyCost) * 12 + (Number(home.propertyTax) || 0)) * infl
           // 購入後は家賃が不要になる分、手元に残る
           if (home.stopRent) eventCost -= monthlyRent * 12 * infl
         }
@@ -291,7 +313,12 @@ function runSim(p, events) {
     }
 
     invest += Math.max(0, invest) * rInvest + fundInvest + extra
-    cash   += Math.max(0, cash) * rCash + annualIncome + allowance - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay
+    // 計画した取り崩し（投信 → 預金）。投信の残高まで
+    const withdrawn = Math.min(fundWithdraw, Math.max(0, invest))
+    invest -= withdrawn
+    cash   += Math.max(0, cash) * rCash + annualIncome + allowance + extraIncome - fundInvest - annualExpense + annualPension - eventCost - premium + lump + dcPay + withdrawn
+    let autoIns = 0
+    let autoInvest = 0
     // 足りないときに崩す順番：預金 → 外貨保険（一部解約）→ 投信。DCは受け取るまで崩せない
     // 保険を計画的にやめるなら、LPの外貨保険で保険ごとに「受け取る年」を指定する（ここは預金が尽きたときの備え）
     const insNext = (insuranceValues[age + 1] || 0) * insFactor
@@ -299,12 +326,16 @@ function runSim(p, events) {
       const draw = Math.min(insNext, -cash)
       insFactor *= 1 - draw / insNext
       cash += draw
+      autoIns = draw
     }
     if (cash < 0 && invest > 0) {
       const draw = Math.min(invest, -cash)
       invest -= draw
       cash   += draw
+      autoInvest = draw
     }
+    // 計画外の取り崩し（預金が足りずに自動で崩した額）。LPチェックで見直しを促す
+    Object.assign(data[data.length - 1], { autoIns: Math.round(autoIns), autoInvest: Math.round(autoInvest), fundInvest, withdrawn: Math.round(withdrawn) })
     data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
     data[data.length - 1].allowance = Math.round(allowance)
   }
@@ -387,6 +418,10 @@ function ChildEvent({ label, state, onChange }) {
               ))}
             </select>
           </label>
+          <EventNumField label="生活費（教育費以外）" unit="円 / 月"
+            value={state.livingMonthly ?? 0} onChange={v => onChange(p => ({ ...p, livingMonthly: v }))} />
+          <EventNumField label="生活費がかかるのは" unit="歳まで"
+            value={state.livingUntil ?? 22} onChange={v => onChange(p => ({ ...p, livingUntil: v }))} />
         </div>
       )}
     </div>
@@ -498,6 +533,67 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 // 開閉式の欄。閉じていても見出しの右に要点を出す
+// 投信の計画：積立（月額）と取り崩し（年額）を年齢の範囲で。毎年夫婦で見直す前提
+function FundPlan({ rows, isAuto, onChange, onReset, ageNow, retireAge }) {
+  const upd = (id, patch) => onChange(rows.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  const add = (kind) => onChange([...rows, kind === 'invest'
+    ? { id: `f${Date.now()}`, kind, fromAge: ageNow, toAge: retireAge - 1, amount: 0 }
+    : { id: `f${Date.now()}`, kind, fromAge: retireAge, toAge: retireAge + 9, amount: 0 }])
+  return (
+    <div className="sim-fundplan">
+      <div className="sim-subhead">投信の計画 <span className="sim-section-note">
+        {isAuto ? '資産タブの積立額を退職まで続ける形。変えるとこの計画で計算' : '毎年見直して書き換える'}</span></div>
+      {rows.map(r => (
+        <div key={r.id} className="sim-ef-row sim-fundplan-row">
+          <select className="sim-mini-select" value={r.kind} onChange={e => upd(r.id, { kind: e.target.value })}>
+            <option value="invest">積立</option>
+            <option value="withdraw">取り崩し</option>
+          </select>
+          <NumInput className="sim-mini-input sim-mini-input--age" value={r.fromAge} onChange={v => upd(r.id, { fromAge: v })} />
+          <span className="sim-ef-unit">〜</span>
+          <NumInput className="sim-mini-input sim-mini-input--age" value={r.toAge} onChange={v => upd(r.id, { toAge: v })} />
+          <span className="sim-ef-unit">歳</span>
+          <NumInput className="sim-mini-input sim-mini-input--wide" value={r.amount} onChange={v => upd(r.id, { amount: v })} />
+          <span className="sim-ef-unit">{r.kind === 'invest' ? '円 / 月' : '円 / 年'}</span>
+          <button type="button" className="sim-row-del" onClick={() => onChange(rows.filter(x => x.id !== r.id))} aria-label="この行を消す">×</button>
+        </div>
+      ))}
+      <div className="sim-ef-row">
+        <button type="button" className="sim-choice-btn" onClick={() => add('invest')}>＋ 積立</button>
+        <button type="button" className="sim-choice-btn" onClick={() => add('withdraw')}>＋ 取り崩し</button>
+        {!isAuto && <button type="button" className="sim-choice-btn" onClick={onReset}>資産タブの積立に戻す</button>}
+      </div>
+      <p className="sim-ef-note">取り崩しは投信から預金へ移す額（投信の残高まで）。預金が足りなくなった年は、計画とは別に 外貨保険 → 投信 の順に自動で崩し、LPチェックに出します</p>
+    </div>
+  )
+}
+
+// 臨時の収入・支出（年は西暦。金額はその年の金額のまま）
+const newOneOff = () => ({ id: `o${Date.now()}`, year: new Date().getFullYear() + 1, kind: 'expense', amount: 0, memo: '' })
+function OneOffs({ rows, onChange }) {
+  const upd = (id, patch) => onChange(rows.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  return (
+    <div className="sim-event-body">
+      {rows.map(r => (
+        <div key={r.id} className="sim-ef-row sim-fundplan-row">
+          <NumInput className="sim-mini-input" value={r.year} onChange={v => upd(r.id, { year: v })} />
+          <span className="sim-ef-unit">年</span>
+          <select className="sim-mini-select" value={r.kind} onChange={e => upd(r.id, { kind: e.target.value })}>
+            <option value="expense">支出</option>
+            <option value="income">収入</option>
+          </select>
+          <NumInput className="sim-mini-input sim-mini-input--wide" value={r.amount} onChange={v => upd(r.id, { amount: v })} />
+          <span className="sim-ef-unit">円</span>
+          <input className="sim-mini-input sim-oneoff-memo" value={r.memo} placeholder="メモ" onChange={e => upd(r.id, { memo: e.target.value })} />
+          <button type="button" className="sim-row-del" onClick={() => onChange(rows.filter(x => x.id !== r.id))} aria-label="この行を消す">×</button>
+        </div>
+      ))}
+      <button type="button" className="sim-choice-btn" onClick={() => onChange([...rows, newOneOff()])}>＋ 追加</button>
+      <p className="sim-ef-note">お祝い・家電の買い替え・相続など、他の項目に当てはまらないもの</p>
+    </div>
+  )
+}
+
 function Section({ icon, title, summary, children }) {
   return (
     <details className="sim-section sim-collapse">
@@ -601,8 +697,11 @@ export default function SimTab() {
     base: 0,
     stages: [{ fromAge: 3, add: 0 }, { fromAge: 6, add: 0 }, { fromAge: 12, add: 0 }],
   })
-  const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立' })
-  const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立' })
+  const [child1, setChild1] = useState({ enabled: false, currentAge: 3,  edu: 'オール公立', livingMonthly: 0, livingUntil: 22 })
+  const [child2, setChild2] = useState({ enabled: false, currentAge: 0,  edu: 'オール公立', livingMonthly: 0, livingUntil: 22 })
+  const [ninkatsu, setNinkatsu] = useState({ enabled: false, yearsFromNow: 1, years: 1, annual: 1_500_000 })
+  const [oneOffs, setOneOffs] = useState([])     // 臨時の収入・支出 [{ id, year(西暦), kind: income|expense, amount, memo }]
+  const [fundPlan, setFundPlan] = useState(null) // 投信の計画 [{ id, kind: invest|withdraw, fromAge, toAge, amount }]。null は資産タブの積立のまま
   const [dog,    setDog]    = useState({ enabled: false, size: 'small', yearsFromNow: 1, initialCost: 300_000, ...DOG_SIZES.small.defaults })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
@@ -613,7 +712,7 @@ export default function SimTab() {
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
     landGrowth: 0, buildingLife: 30, buildingResidual: 0,  // 家の価値：土地の値上がり率（%/年）、建物の耐用年数・残存割合（%）
-    deductLimit: 30_000_000, deductYears: 13,               // 住宅ローン控除：借入限度額（省エネ基準の新築 3,000万）・控除期間
+    deductLimit: 30_000_000, deductYears: 13, propertyTax: 0,               // 住宅ローン控除：借入限度額（省エネ基準の新築 3,000万）・控除期間
   })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
@@ -626,7 +725,7 @@ export default function SimTab() {
   const lastSavedJson = useRef(null)
 
   const { currentAge: _age, ...savedParams } = params
-  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd, insReceive })
+  const settingsJson = JSON.stringify({ params: savedParams, wife, child1, child2, car, home, dog, whatIfs, work, insPayEnd, insReceive, ninkatsu, oneOffs, fundPlan })
 
   useEffect(() => {
     if (!isGasReady()) return
@@ -650,6 +749,9 @@ export default function SimTab() {
           if (s.work) setWork(w => ({ me: { ...w.me, ...s.work.me }, wife: { ...w.wife, ...s.work.wife } }))
           if (s.insPayEnd) setInsPayEnd(s.insPayEnd)
           if (s.insReceive) setInsReceive(s.insReceive)
+          if (s.ninkatsu) setNinkatsu(n => ({ ...n, ...s.ninkatsu }))
+          if (Array.isArray(s.oneOffs)) setOneOffs(s.oneOffs)
+          if (Array.isArray(s.fundPlan)) setFundPlan(s.fundPlan)
         }
         setSettingsStatus('idle')
         setSettingsLoaded(true)
@@ -891,7 +993,8 @@ export default function SimTab() {
     insurancePremiums: insPolicies.filter(x => x.times > 0),
     insuranceValues,
     childAllowance:  params.childAllowance,
-  }), [params, vals, wife, work, insPolicies, insuranceValues])
+    fundPlan,
+  }), [params, vals, wife, work, insPolicies, insuranceValues, fundPlan])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
   // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
@@ -906,7 +1009,7 @@ export default function SimTab() {
     ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000 }
     : home), [home, homestPlan, homestLinked])
 
-  const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff }), [child1, child2, car, dog, homeEff])
+  const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff, ninkatsu, oneOffs }), [child1, child2, car, dog, homeEff, ninkatsu, oneOffs])
   const sim = useMemo(() => runSim(simParams, events), [simParams, events])
 
   const requiredExtra = useMemo(() => calcRequiredExtra(simParams, events), [simParams, events])
@@ -929,7 +1032,7 @@ export default function SimTab() {
   const wifeIncomeNow    = wifeIncomeAt(wife, [child1, child2], 0)
   // 家計の収支（積立は使ったお金ではないので引かない）と、預金の増減（投信積立の分だけ預金から投資へ移る）
   const householdNow     = vals.myIncome + wifeIncomeNow - monthlyLiving * 12
-  const fundInvestAnnual = vals.monthlyFundInvest * 12
+  const fundInvestAnnual = sim[0]?.fundInvest ?? vals.monthlyFundInvest * 12
   const annualSurplusNow = householdNow - fundInvestAnnual
   // 子どもが生まれる前は、妻の手取りを0円として計算している
   const wifeBeforeBirth  = [child1, child2].some(c => c.enabled) &&
@@ -1009,12 +1112,17 @@ export default function SimTab() {
   const setP = (key) => (v) => setParams(p => ({ ...p, [key]: v }))
   const setV = (key) => (v) => setVals(p => ({ ...p, [key]: v }))
   const dcAtRetire = sim.find(d => d.age === retireAge)?.dc ?? 0
+  // 投信の計画（未設定なら資産タブの積立額を退職まで）
+  const fundPlanRows = fundPlan ?? [{ id: 'auto', kind: 'invest', fromAge: params.currentAge, toAge: params.retireAge - 1, amount: vals.monthlyFundInvest }]
+
   const lifeEventSummary = [
     child1.enabled && `子1（${child1.currentAge}歳）`,
     child2.enabled && `子2（${child2.currentAge}歳）`,
     car.enabled && '車',
     dog.enabled && '犬',
     home.enabled && `家（${home.yearsFromNow}年後）`,
+    ninkatsu.enabled && '妊活',
+    oneOffs.length > 0 && `臨時${oneOffs.length}件`,
   ].filter(Boolean).join('・') || 'なし'
 
   // ─── レンダリング ────────────────────────────────
@@ -1240,8 +1348,9 @@ export default function SimTab() {
         <div className="sim-fields">
           <Field label="預金" unit="円" note="預金金利で増える" fetched wide value={vals.cashAssets} onChange={setV('cashAssets')} />
           <Field label="投資信託" unit="円" note="評価額。預金と保険が尽きたら取り崩す" fetched wide value={vals.fundAssets} onChange={setV('fundAssets')} />
-          <Field label="投信積立" unit="円 / 月" note="手取りから。定年まで" fetched wide value={vals.monthlyFundInvest} onChange={setV('monthlyFundInvest')} />
         </div>
+        <FundPlan rows={fundPlanRows} isAuto={!fundPlan} onChange={setFundPlan} onReset={() => setFundPlan(null)}
+          ageNow={params.currentAge} retireAge={params.retireAge} />
         <div className="sim-subhead">DC（企業型確定拠出年金）＝退職金 <span className="sim-section-note">受け取るまでは取り崩せない</span></div>
         <div className="sim-fields">
           <Field label="DC評価額" unit="円" fetched wide value={vals.dcAssets} onChange={setV('dcAssets')} />
@@ -1322,6 +1431,33 @@ export default function SimTab() {
               <span className="sim-ef-label">児童手当を収入に入れる（0〜2歳 月1.5万・3〜18歳 月1万）</span>
             </label>
           )}
+
+          <div className="sim-event">
+            <button
+              className={`sim-event-toggle${ninkatsu.enabled ? ' active' : ''}`}
+              onClick={() => setNinkatsu(p => ({ ...p, enabled: !p.enabled }))}>
+              🍼 妊活
+            </button>
+            {ninkatsu.enabled && (
+              <div className="sim-event-body">
+                <EventNumField label="始まり" unit="年後（0で今年）"
+                  value={ninkatsu.yearsFromNow} onChange={v => setNinkatsu(p => ({ ...p, yearsFromNow: v }))} />
+                <EventNumField label="続ける年数" unit="年"
+                  value={ninkatsu.years} onChange={v => setNinkatsu(p => ({ ...p, years: v }))} />
+                <EventNumField label="費用" unit="円 / 年" wide
+                  value={ninkatsu.annual} onChange={v => setNinkatsu(p => ({ ...p, annual: v }))} />
+              </div>
+            )}
+          </div>
+
+          <div className="sim-event">
+            <button
+              className={`sim-event-toggle${oneOffs.length ? ' active' : ''}`}
+              onClick={() => { if (!oneOffs.length) setOneOffs([newOneOff()]) }}>
+              📝 臨時の収入・支出
+            </button>
+            {oneOffs.length > 0 && <OneOffs rows={oneOffs} onChange={setOneOffs} />}
+          </div>
 
           <div className="sim-event">
             <button
@@ -1430,7 +1566,9 @@ export default function SimTab() {
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
                 <EventNumField label="ローン金利" unit="% / 年"
                   value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
-                <EventNumField label="固定資産税・保険など" unit="円 / 月"
+                <EventNumField label="固定資産税" unit="円 / 年" wide
+                  value={home.propertyTax ?? 0} onChange={v => setHome(p => ({ ...p, propertyTax: v }))} />
+                <EventNumField label="保険・点検など（固定資産税以外）" unit="円 / 月"
                   value={home.monthlyCost} onChange={v => setHome(p => ({ ...p, monthlyCost: v }))} />
                 <EventNumField label="大規模修繕の間隔" unit="年ごと（0でなし）"
                   value={home.repairEvery} onChange={v => setHome(p => ({ ...p, repairEvery: v }))} />
