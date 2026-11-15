@@ -22,8 +22,11 @@ const DETAIL = [
   { group: '投資', cls: 'mv', cols: [
     ['fundInvest', '積立'], ['withdrawn', '取り崩し'], ['autoDraw', '計画外'],
   ] },
-  { group: '年末の資産', cls: 'bal', cols: [
-    ['endCash', '預金'], ['endInvest', '投信'], ['endDc', 'DC'], ['endIns', '保険'],
+  { group: '年末・使えるお金', cls: 'bal', cols: [
+    ['endCash', '預金'], ['endInvest', '投信'], ['endIns', '保険'], ['endDcFree', 'DC'],
+  ] },
+  { group: '年末・使えないお金', cls: 'lock', cols: [
+    ['endDcLock', 'DC（受取前）'], ['endHome', '家（純資産）'],
   ] },
 ]
 
@@ -73,7 +76,8 @@ export default function LPYearTable({ sim, wifeAge, kids }) {
             <th className="lpy-in" rowSpan={detail ? 2 : 1}>収入</th>
             <th className="lpy-out" rowSpan={detail ? 2 : 1}>支出</th>
             <th rowSpan={detail ? 2 : 1}>収支</th>
-            <th className="lpy-bal" rowSpan={detail ? 2 : 1}>資産</th>
+            <th className="lpy-bal" rowSpan={detail ? 2 : 1}>使えるお金</th>
+            <th className="lpy-lock" rowSpan={detail ? 2 : 1}>使えないお金</th>
             {detail && DETAIL.map(g => <th key={g.group} className={`lpy-${g.cls} lpy-group`} colSpan={g.cols.length}>{g.group}</th>)}
           </tr>
           {detail && (
@@ -95,7 +99,8 @@ export default function LPYearTable({ sim, wifeAge, kids }) {
                 <td>{man(f.income)}</td>
                 <td>{man(f.expense)}</td>
                 <td className={f.balance < 0 ? 'lpy-neg' : ''}>{f.balance < 0 ? '▲' : ''}{man(Math.abs(f.balance))}</td>
-                <td className={`lpy-strong${f.endTotal < 0 ? ' lpy-neg' : ''}`}>{man(f.endTotal)}</td>
+                <td className={`lpy-strong${f.endUsable < 0 ? ' lpy-neg' : ''}`}>{f.endUsable < 0 ? '▲' : ''}{man(Math.abs(f.endUsable))}</td>
+                <td className="lpy-locked">{man(f.endLocked)}</td>
                 {detail && DETAIL.flatMap(g => g.cols.map(([k]) => (
                   <td key={k} className={k === 'autoDraw' && f[k] > 0 ? 'lpy-neg' : ''}>{man(f[k])}</td>
                 )))}
@@ -122,13 +127,13 @@ export default function LPYearTable({ sim, wifeAge, kids }) {
   return (
     <details className="sim-section sim-collapse lpy">
       <summary className="sim-section-title">
-        📋 年ごとの表 <span className="sim-section-note">収入・支出・収支・年末の資産</span>
+        📋 年ごとの表 <span className="sim-section-note">収入・支出・収支・年末の使えるお金／使えないお金</span>
       </summary>
       <div ref={boxRef} className={full ? 'lpy-full' : ''}>
         {toolbar}
         {full && <p className="lpy-hint">スマホは横向きにすると見やすくなります</p>}
         {table}
-        <p className="lpy-note">収支＝収入−支出（投信への積立・取り崩しは資産の移動なので含めない）。「計画外」は預金が足りずに保険・投信を自動で崩した額で、その年は色が付きます</p>
+        <p className="lpy-note">収支＝収入−支出（投信への積立・取り崩しは資産の移動なので含めない）。「計画外」は預金が足りずに保険・投信を自動で崩した額で、その年は色が付きます。使えないお金＝受け取り前のDCと家の純資産</p>
       </div>
     </details>
   )

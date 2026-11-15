@@ -63,6 +63,8 @@
 .lpy-table thead .lpy-out { color: #cf222e; }
 .lpy-table thead .lpy-mv  { color: #8250df; }
 .lpy-table thead .lpy-bal { color: #003087; }
+.lpy-table thead .lpy-lock { color: #8b949e; }
+.lpy-locked { color: #8b949e; }
 .lpy-group { border-left: 1px solid #e1e4e8; }
 .lpy-sub { color: #8b949e; font-size: 0.68rem; }
 .lpy-strong { font-weight: 700; }

@@ -397,13 +397,17 @@ function runSim(p, events) {
       childLiving: R(b.childLiving || 0), edu: R(b.edu || 0), car: R(b.car || 0), dog: R(b.dog || 0),
       ninkatsu: R(b.ninkatsu || 0), oneOff: R(b.oneOff || 0), premium: R(premium),
       fundInvest: R(fundInvest), withdrawn: R(withdrawn), autoDraw: R(autoIns + autoInvest),
-      endCash: R(cash), endInvest: R(invest), endDc: R(dc), endIns: R((insuranceValues[age + 1] || 0) * insFactor),
+      endCash: R(cash), endInvest: R(invest), endIns: R((insuranceValues[age + 1] || 0) * insFactor),
+      // 年末の時点で受け取り年齢前なら、DCは使えないお金
+      endDcFree: age + 1 >= dcAge ? R(dc) : 0, endDcLock: age + 1 >= dcAge ? 0 : R(dc),
+      endHome: R(homeEquityAt(home, t + 1)),
     }
     flow.income = flow.incomeMe + flow.incomeWife + flow.pension + flow.allowance + flow.loanDeduct + flow.otherIncome
     flow.expense = flow.living + flow.yutori + flow.housing + flow.homeKeep + flow.homeDown + flow.childLiving + flow.edu
       + flow.car + flow.dog + flow.ninkatsu + flow.oneOff + flow.premium
     flow.balance = flow.income - flow.expense
-    flow.endTotal = flow.endCash + flow.endInvest + flow.endDc + flow.endIns
+    flow.endUsable = flow.endCash + flow.endInvest + flow.endIns + flow.endDcFree
+    flow.endLocked = flow.endDcLock + flow.endHome
     data[data.length - 1].flow = flow
     data[data.length - 1].expense = Math.round(annualExpense)  // この年の生活費（合格ラインの判定用）
     data[data.length - 1].allowance = Math.round(allowance)
@@ -621,12 +625,14 @@ function SumCard({ label, value, sub, pos, neg }) {
 }
 
 // 資産推移グラフの系列（色は dataviz の検証済みカテゴリ色。名前は凡例とツールチップに必ず出す）
+// usable: 使えるお金か。使えないお金（受け取り前のDC・家）は薄く塗り、使えるお金の上に積む
 const SERIES = [
-  { key: 'cash',   name: '預金',       color: '#2a78d6' },
-  { key: 'invest', name: '投資（投信）', color: '#eb6834' },
-  { key: 'dc',     name: 'DC（退職金）', color: '#1baf7a' },
-  { key: 'ins',    name: '外貨保険',     color: '#eda100' },
-  { key: 'home',   name: '家（純資産）', color: '#b8bec7' },
+  { key: 'cash',   name: '預金',       color: '#2a78d6', usable: true },
+  { key: 'invest', name: '投資（投信）', color: '#eb6834', usable: true },
+  { key: 'ins',    name: '外貨保険',     color: '#eda100', usable: true },
+  { key: 'dcFree', name: 'DC（年金で受取中）', color: '#1baf7a', usable: true, optional: true },
+  { key: 'dcLock', name: 'DC（受け取るまで使えない）', color: '#1baf7a', usable: false },
+  { key: 'home',   name: '家（純資産・使えない）', color: '#b8bec7', usable: false },
 ]
 const SHORT_COLOR = '#e34948'
 
@@ -636,13 +642,19 @@ const CustomTooltip = ({ active, payload, label }) => {
   return (
     <div className="sim-tooltip">
       <p className="sim-tt-age">{label}歳</p>
-      <p className="sim-tt-row sim-tt-total"><span>使えるお金</span><span>{fmtSign(d.raw.assets)}</span></p>
-      {SERIES.map(sr => (
-        <p key={sr.key} className="sim-tt-row">
-          <span><i className="sim-tt-dot" style={{ background: sr.color }} />{sr.name}
-            {sr.key === 'dc' && d.raw.dcLocked && d.raw.dc > 0 && <small>（受け取るまで使えない）</small>}</span>
-          <span>{fmtSign(d.raw[sr.key] || 0)}</span>
-        </p>
+      {[true, false].map(usable => (
+        <div key={String(usable)}>
+          <p className="sim-tt-row sim-tt-total">
+            <span>{usable ? '使えるお金' : '使えないお金'}</span>
+            <span>{fmtSign(usable ? d.raw.assets : d.dcLock + d.home)}</span>
+          </p>
+          {SERIES.filter(sr => sr.usable === usable && (!sr.optional || d[sr.key] > 0)).map(sr => (
+            <p key={sr.key} className="sim-tt-row">
+              <span><i className="sim-tt-dot" style={{ background: sr.color, opacity: usable ? 1 : 0.4 }} />{sr.name}</span>
+              <span>{fmtSign(sr.key === 'cash' || sr.key === 'invest' ? d.raw[sr.key] : d[sr.key])}</span>
+            </p>
+          ))}
+        </div>
       ))}
       {d.raw.short < 0 && (
         <p className="sim-tt-row sim-tt-short">
@@ -1140,7 +1152,8 @@ export default function SimTab() {
   // 積み上げは0未満を描かない（預金がマイナスの年は合計の線が積み上げより下に来る）
   const chartData = useMemo(() =>
     sim.map(d => ({
-      age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), dc: Math.max(0, d.dc), ins: Math.max(0, d.ins || 0),
+      age: d.age, cash: Math.max(0, d.cash), invest: Math.max(0, d.invest), ins: Math.max(0, d.ins || 0),
+      dcFree: d.dcLocked ? 0 : Math.max(0, d.dc), dcLock: d.dcLocked ? Math.max(0, d.dc) : 0,
       home: Math.max(0, d.home || 0), short: Math.min(0, d.short || 0),
       total: Math.max(0, d.assets), raw: d,
     })),
@@ -1354,13 +1367,14 @@ export default function SimTab() {
               <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }}
                 formatter={v => <span style={{ color: '#57606a' }}>{v}</span>}
                 payload={[
-                  ...SERIES.map(sr => ({ value: sr.name, type: 'square', color: sr.color, id: sr.key })),
+                  ...SERIES.filter(sr => !sr.optional || chartData.some(x => x[sr.key] > 0))
+                    .map(sr => ({ value: sr.name, type: 'square', color: sr.usable ? sr.color : `${sr.color}66`, id: sr.key })),
                   { value: '足りない額', type: 'square', color: SHORT_COLOR, id: 'short' },
                   { value: '使えるお金の合計', type: 'line', color: '#1f2328', id: 'total' },
                 ]} />
               {SERIES.map(sr => (
                 <Area key={sr.key} type="monotone" dataKey={sr.key} name={sr.name} stackId="assets"
-                  fill={sr.color} fillOpacity={0.8} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
+                  fill={sr.color} fillOpacity={sr.usable ? 0.8 : 0.3} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
               ))}
               <Area type="monotone" dataKey="short" name="足りない額" fill={SHORT_COLOR} fillOpacity={0.75} stroke="#fff" strokeWidth={1.5} isAnimationActive={false} />
               <ReferenceLine y={0} stroke="#888" />
