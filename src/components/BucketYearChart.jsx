@@ -293,10 +293,13 @@ export default function BucketYearChart() {
           value={bucketName}
           onChange={e => setBucketName(e.target.value)}
         >
+          {/* 中計の下に内訳のバケットを字下げして並べる（家賃は固定額なので単独では出さない） */}
           <option value={TOTAL}>{TOTAL}</option>
           <option value={MID}>{MID}</option>
+          {MID_NAMES.map(n => <option key={n} value={n}>{'　∟'}{n}</option>)}
           <option value={MID2}>{MID2}</option>
-          {BUCKET_CONFIG.map(b => (
+          {MID2_NAMES.map(n => <option key={n} value={n}>{'　∟'}{n}</option>)}
+          {BUCKET_CONFIG.filter(b => ![...MID_NAMES, ...MID2_NAMES, '家賃'].includes(b.name)).map(b => (
             <option key={b.name} value={b.name}>{b.name}</option>
           ))}
         </select>

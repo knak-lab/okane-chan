@@ -1,3 +1,4 @@
+/* 共通スタイル（旧「支払」タブの Dashboard.css。資産・年間・予実などでも使っている） */
 .dashboard {
   display: flex;
   flex-direction: column;
