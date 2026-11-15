@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import Dashboard from './components/Dashboard'
 import PayPayImport from './components/PayPayImport'
 import OsaifuInput from './components/OsaifuInput'
 import AssetSummary from './components/AssetSummary'
@@ -14,6 +13,7 @@ import { syncRulesWithGas } from './utils/customRules'
 import { onGoTo } from './utils/nav'
 import OutboxBadge from './components/OutboxBadge'
 import { LockButton } from './auth/AuthGate'
+import './components/shared.css'
 import './App.css'
 
 // 使う頻度で5つに分ける：毎日見る「予実」／月1回の「入力」「資産」／面談前後の「将来」／年初の「設定」
@@ -27,7 +27,7 @@ const TABS = [
 const SUB_TABS = {
   input: [
     { id: 'csv',    label: 'CSV取込' },
-    { id: 'osaifu', label: '財布' },
+    { id: 'osaifu', label: '現金' },
     { id: 'rules',  label: 'カテゴリルール' },
   ],
   future: [
@@ -53,8 +53,6 @@ function SubTabs({ tab, active, onChange, badges = {} }) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('month')
   const [subTab, setSubTab] = useState({ input: 'csv', future: 'lp' })
-  const [showPayDetail, setShowPayDetail] = useState(false)
-  const [dashTransactions, setDashTransactions] = useState([])
   const [csvTransactions, setCsvTransactions]   = useState([])
 
   useEffect(() => {
@@ -97,15 +95,7 @@ export default function App() {
 
       <main className="main-content">
         {activeTab === 'month' && (
-          <>
-            <AccView />
-            {/* 予実タブの下：予算と実績・内訳の詳細。開いたときだけ読み込む */}
-            <details className="pay-detail" open={showPayDetail}
-              onToggle={e => setShowPayDetail(e.currentTarget.open)}>
-              <summary>📋 支払の詳細（予算と実績・内訳・カテゴリ別一覧）</summary>
-              {showPayDetail && <Dashboard transactions={dashTransactions} onLoad={setDashTransactions} />}
-            </details>
-          </>
+<AccView />
         )}
 
         {activeTab === 'input' && (

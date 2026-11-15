@@ -5,7 +5,6 @@ import { readCache, writeCache } from '../utils/localCache'
 import { ALL_CATEGORIES } from '../utils/categorize'
 import { saveCustomRule } from '../utils/customRules'
 import { withFixedRent } from '../utils/fixedRent'
-import OsaifuInput from './OsaifuInput'
 import BucketYearChart from './BucketYearChart'
 import './AccView.css'
 
@@ -301,6 +300,12 @@ export default function AccView() {
     return { budget: totalBudget, actual: totalActual, remaining, ratio, months: fiscalMonths }
   }, [annualPlan, displayMonth, availableMonths, annualTransactions])
 
+  // 支出合計：月はその月、年度計は1月〜その月（対象外を除き、家賃を含む）
+  const spendTotal = useMemo(() => {
+    const src = isCumulative ? annualBillable : billable
+    return { amount: src.reduce((s, t) => s + t.amount, 0), count: src.length }
+  }, [isCumulative, annualBillable, billable])
+
   const cumulativePeriodLabel = useMemo(() => {
     const ms = [...cumulativeMidData.months].sort()
     return ms.length > 0
@@ -341,6 +346,12 @@ export default function AccView() {
           {lastImportedAt && (
             <span className="acc-import-at">PayPay取込更新日：{lastImportedAt}</span>
           )}
+        </div>
+
+        <div className="acc-spend-total">
+          <span className="acc-spend-total-label">支出合計</span>
+          <span className="acc-spend-total-amount">{fmt(spendTotal.amount)}</span>
+          <span className="acc-spend-total-count">{spendTotal.count}件</span>
         </div>
 
         <table className="acc-table">
@@ -580,10 +591,6 @@ export default function AccView() {
           </div>
         )
       })()}
-
-      {/* 現金やりとり */}
-      <p className="acc-section-label">現金やりとり</p>
-      <OsaifuInput />
 
     </div>
   )
