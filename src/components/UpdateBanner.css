@@ -1,0 +1,28 @@
+.update-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff4eb;
+  border: 1px solid #F47920;
+  color: #9a4a0c;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.update-banner button {
+  flex-shrink: 0;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 999px;
+  background: #F47920;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}

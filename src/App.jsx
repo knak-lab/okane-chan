@@ -12,6 +12,7 @@ import { isGasReady } from './utils/gasApi'
 import { syncRulesWithGas } from './utils/customRules'
 import { onGoTo } from './utils/nav'
 import OutboxBadge from './components/OutboxBadge'
+import UpdateBanner from './components/UpdateBanner'
 import { LockButton } from './auth/AuthGate'
 import './components/shared.css'
 import './App.css'
@@ -78,6 +79,7 @@ export default function App() {
         <h1>お金ちゃん管理</h1>
         <LockButton style={{ marginLeft: 'auto', position: 'absolute', right: 16, background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }} />
       </header>
+      <UpdateBanner />
       <OutboxBadge />
 
       <nav className="tab-nav">
