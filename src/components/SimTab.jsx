@@ -91,6 +91,19 @@ const DOG_SIZES = {
 }
 
 const homePrice = (home) => Number(home.landPrice) + Number(home.buildingPrice)
+// 固定資産税＋都市計画税（年額）の目安。k は購入から何年目か（0 が購入の年）
+//  土地：評価額＝価格の70%。住宅用地の特例（200m²以下）で固定資産税1.4%は1/6、都市計画税0.3%は1/3
+//  建物：評価額＝建築費の60%から毎年3.2%ずつ下がり、20%で止まる（木造の目安）。税率1.4%＋0.3%。
+//        新築から3年間は固定資産税が半分（120m²分まで。ここでは全体に当てる）
+//  評価額は3年ごとの見直しで大きくは変わらないので、物価上昇は掛けない
+function propertyTaxAt(home, k) {
+  const land = Number(home.landPrice) * 0.7 * (0.014 / 6 + 0.003 / 3)
+  const bldValue = Number(home.buildingPrice) * 0.6 * Math.max(0.2, 1 - 0.032 * k)
+  const bld = bldValue * ((k < 3 ? 0.007 : 0.014) + 0.003)
+  return land + bld
+}
+// 諸経費（現金で払う）。「家」タブで金額を入れていればその額、なければ物件価格×諸経費率
+const homeFee = (home) => (home.miscCost != null ? Number(home.miscCost) : homePrice(home) * Number(home.feeRate) / 100)
 
 // 元利均等返済の年間返済額
 function annualLoanPayment(principal, ratePercent, years) {
@@ -130,7 +143,9 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
   if (age >= Number(w.lateUntil)) return 0
   if (age >= Number(w.lateFrom)) return Number(w.lateIncome) || 0
   const raiseYears = Math.max(0, Math.min(age, Number(w.raiseStopAge)) - ageNow)
-  let v = baseNow * (1 + (incomeGrowth || 0) / 100) ** raiseYears
+  // 昇進などの昇給（その年齢から手取り年収に上乗せ）。伸び率とは別に、減額（60歳〜）には同じ割合で効く
+  const stepUp = (w.raises || []).reduce((s, r) => s + (age >= Number(r.fromAge) ? Number(r.amount) || 0 : 0), 0)
+  let v = (baseNow + stepUp) * (1 + (incomeGrowth || 0) / 100) ** raiseYears
   if (age >= Number(w.reducedFrom)) v *= (Number(w.reducedRate) || 0) / 100
   return v
 }
@@ -153,7 +168,7 @@ const MODEL_ASSUMPTIONS = [
   '子どもの生活費（教育費以外）・妊活・固定資産税・臨時の収入/支出はライフイベントで入れた分だけ。臨時の分は物価上昇を掛けない',
   'お金が足りないときは 預金 → 外貨保険（一部解約。返戻金・保険料も同じ割合で減る）→ 投信 の順に崩す。DCは受け取るまで崩せない。それでも足りない分は「足りない額」として累積する（借入の利息は考えない）',
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
-  '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇給停止・減額・65歳以降の年収・引退）。65歳以降の年収は物価では増やさない',
+  '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇進などの昇給・昇給停止・減額・65歳以降の年収・引退）。昇給は手取りへの上乗せ額で入れ、伸び率と減額の割合はその額にも掛ける。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
   'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
@@ -287,7 +302,7 @@ function runSim(p, events) {
       if (home?.enabled) {
         const bought = Number(home.yearsFromNow)
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
-        if (t === bought) cost('homeBuy', Number(home.downPayment) + homePrice(home) * Number(home.feeRate) / 100)
+        if (t === bought) cost('homeBuy', Number(home.downPayment) + homeFee(home))
         if (t >= bought && t < bought + Number(home.loanYears)) cost('loan', homeLoan)
         // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
         const deductYears = Number(home.deductYears ?? 13)
@@ -299,7 +314,7 @@ function runSim(p, events) {
         }
         if (t >= bought) {
           cost('homeKeep', Number(home.monthlyCost) * 12 * infl)
-          cost('propertyTax', (Number(home.propertyTax) || 0) * infl)
+          cost('propertyTax', propertyTaxAt(home, t - bought))
           // 購入後は家賃が不要になる分、手元に残る
           if (home.stopRent) cost('rentStop', -monthlyRent * 12 * infl)
         }
@@ -524,18 +539,36 @@ function EventNumField({ label, unit, value, onChange, wide }) {
 
 // 60歳以降の働き方（1人分）
 function WorkFields({ title, w, ageNow, onChange, incomeAt }) {
-  const row = (children) => <div className="sim-ef-row sim-work-row">{children}</div>
+  const row = (children, key) => <div key={key} className="sim-ef-row sim-work-row">{children}</div>
   const num = (key, wide) => (
     <NumInput className={`sim-mini-input ${wide ? 'sim-mini-input--wide' : 'sim-mini-input--age'}`} value={w[key]}
       onChange={v => onChange({ [key]: v })} />
   )
-  const checkpoints = [...new Set([ageNow, Number(w.raiseStopAge), Number(w.reducedFrom), Number(w.lateFrom), Number(w.lateUntil)])]
+  const checkpoints = [...new Set([ageNow, ...(w.raises || []).map(r => Number(r.fromAge)), Number(w.raiseStopAge), Number(w.reducedFrom), Number(w.lateFrom), Number(w.lateUntil)])]
     .filter(a => a >= ageNow).sort((a, b) => a - b)
   return (
     <div className="sim-event-body sim-work">
       <div className="sim-ef-label"><strong>{title}</strong>（今 {ageNow}歳）</div>
       <div className="sim-ef">
-        {row(<>{num('raiseStopAge')}<span className="sim-ef-unit">歳で昇給が止まる</span></>)}
+        {row(<>{num('raiseStopAge')}<span className="sim-ef-unit">歳で昇給（伸び率）が止まる</span></>)}
+      </div>
+      <div className="sim-ef">
+        {(w.raises || []).map(r => {
+          const upd = (patch) => onChange({ raises: w.raises.map(x => (x.id === r.id ? { ...x, ...patch } : x)) })
+          return row(<>
+            <span className="sim-ef-unit">昇給</span>
+            <NumInput className="sim-mini-input sim-mini-input--age" value={r.fromAge} onChange={v => upd({ fromAge: v })} />
+            <span className="sim-ef-unit">歳から 手取り年 ＋</span>
+            <NumInput className="sim-mini-input sim-mini-input--wide" value={r.amount} onChange={v => upd({ amount: v })} />
+            <span className="sim-ef-unit">円</span>
+            <button type="button" className="sim-row-del" aria-label="この昇給を消す"
+              onClick={() => onChange({ raises: w.raises.filter(x => x.id !== r.id) })}>×</button>
+          </>, r.id)
+        })}
+        <button type="button" className="sim-choice-btn"
+          onClick={() => onChange({ raises: [...(w.raises || []), { id: `r${Date.now()}`, fromAge: ageNow + 2, amount: 0 }] })}>
+          ＋ 昇給（昇進など）
+        </button>
       </div>
       <div className="sim-ef">
         {row(<>{num('reducedFrom')}<span className="sim-ef-unit">歳から給料を</span>{num('reducedRate')}<span className="sim-ef-unit">%に</span></>)}
@@ -773,7 +806,7 @@ export default function SimTab() {
     enabled: false, yearsFromNow: 5, landPrice: 25_000_000, buildingPrice: 25_000_000, downPayment: 5_000_000, feeRate: 10,
     loanYears: 35, loanRate: 1.0, monthlyCost: 30_000, stopRent: true, repairEvery: 15, repairCost: 2_000_000,
     landGrowth: 0, buildingLife: 30, buildingResidual: 0,  // 家の価値：土地の値上がり率（%/年）、建物の耐用年数・残存割合（%）
-    deductLimit: 30_000_000, deductYears: 13, propertyTax: 0,               // 住宅ローン控除：借入限度額（省エネ基準の新築 3,000万）・控除期間
+    deductLimit: 30_000_000, deductYears: 13,               // 住宅ローン控除：借入限度額（省エネ基準の新築 3,000万）・控除期間
   })
 
   useEffect(() => { if (isGasReady()) loadData() }, [])
@@ -1067,7 +1100,8 @@ export default function SimTab() {
   }, [])
   const homestLinked = Boolean(homestPlan?.total > 0)
   const homeEff = useMemo(() => (homestLinked
-    ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000 }
+    ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000,
+        miscCost: homestPlan.miscCost != null ? homestPlan.miscCost * 10_000 : null }
     : home), [home, homestPlan, homestLinked])
 
   const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff, ninkatsu, oneOffs }), [child1, child2, car, dog, homeEff, ninkatsu, oneOffs])
@@ -1624,14 +1658,18 @@ export default function SimTab() {
                       value={home.downPayment} onChange={v => setHome(p => ({ ...p, downPayment: v }))} />
                   </>
                 )}
-                <EventNumField label="諸経費" unit="% （物件価格に対して）"
-                  value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />
+                {homeEff.miscCost != null
+                  ? <p className="sim-ef-note">諸経費 {fmt(homeEff.miscCost)}（「家」タブで入力した額。現金で払う）</p>
+                  : <EventNumField label="諸経費" unit="% （物件価格に対して。「家」タブで金額を入れるとそちらを使う）"
+                      value={home.feeRate} onChange={v => setHome(p => ({ ...p, feeRate: v }))} />}
                 <EventNumField label="ローン期間" unit="年"
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
                 <EventNumField label="ローン金利" unit="% / 年"
                   value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
-                <EventNumField label="固定資産税" unit="円 / 年" wide
-                  value={home.propertyTax ?? 0} onChange={v => setHome(p => ({ ...p, propertyTax: v }))} />
+                <p className="sim-ef-note">
+                  固定資産税・都市計画税（自動計算）：1〜3年目 年{fmt(propertyTaxAt(homeEff, 0))} ／ 4年目 年{fmt(propertyTaxAt(homeEff, 3))} ／ 20年目 年{fmt(propertyTaxAt(homeEff, 19))}。
+                  土地は価格の70%、建物は建築費の60%（毎年少しずつ下がる）を評価額とし、住宅用地の特例と新築3年間の減額を入れた目安
+                </p>
                 <EventNumField label="保険・点検など（固定資産税以外）" unit="円 / 月"
                   value={home.monthlyCost} onChange={v => setHome(p => ({ ...p, monthlyCost: v }))} />
                 <EventNumField label="大規模修繕の間隔" unit="年ごと（0でなし）"
@@ -1654,7 +1692,7 @@ export default function SimTab() {
                   <span className="sim-ef-label">購入後は家賃（{fmt(params.monthlyRent)}/月）がなくなる</span>
                 </label>
                 <p className="sim-ef-note">
-                  物件価格 {fmt(homePrice(homeEff))} ／ 諸経費 {fmt(homePrice(homeEff) * homeEff.feeRate / 100)} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(homeEff) - homeEff.downPayment, homeEff.loanRate, homeEff.loanYears) / 12)}
+                  物件価格 {fmt(homePrice(homeEff))} ／ 諸経費 {fmt(homeFee(homeEff))} ／ 月々のローン返済 {fmt(annualLoanPayment(homePrice(homeEff) - homeEff.downPayment, homeEff.loanRate, homeEff.loanYears) / 12)}
                   （価格は購入時の金額。ローン返済額は物価上昇させない。修繕費は物価上昇込み）
                 </p>
               </div>
