@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import useFullscreen from '../utils/useFullscreen'
 import './LPYearTable.css'
 
 // LPの年ごとの表。最初は閉じていて、開くと「収入・支出・収支・年末の資産」の要約、
@@ -32,37 +33,10 @@ const DETAIL = [
 
 export default function LPYearTable({ sim, wifeAge, kids }) {
   const [detail, setDetail] = useState(false)
-  const [full, setFull] = useState(false)
-  const boxRef = useRef(null)
+  const { full, ref: boxRef, open: openFull, close: closeFull } = useFullscreen()
   const thisYear = new Date().getFullYear()
   const startAge = sim[0]?.age ?? 0
   const firstKid = (kids || []).find(c => c?.enabled)
-
-  // 全画面：使えるブラウザでは本当の全画面＋横向き固定を試し、使えなければ画面いっぱいの重ね表示にする
-  const openFull = async () => {
-    setFull(true)
-    try {
-      await boxRef.current?.requestFullscreen?.()
-      await screen.orientation?.lock?.('landscape')
-    } catch { /* iPhone など：重ね表示のまま、端末を横にして見る */ }
-  }
-  const closeFull = async () => {
-    setFull(false)
-    try { screen.orientation?.unlock?.() } catch { /* なし */ }
-    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {})
-  }
-  useEffect(() => {
-    const onChange = () => { if (!document.fullscreenElement) setFull(false) }
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
-  // 重ね表示の間は後ろの画面をスクロールさせない
-  useEffect(() => {
-    if (!full) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [full])
 
   const rows = sim.filter(d => d.flow)
   const table = (

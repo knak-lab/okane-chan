@@ -10,6 +10,7 @@ import { BUCKET_CONFIG } from '../config/budget'
 import AIChat from './AIChat'
 import LPCheck from './LPCheck'
 import LPYearTable from './LPYearTable'
+import useFullscreen from '../utils/useFullscreen'
 import {
   DEFAULT_WHATIFS, toYM, dataChecks, planChecks, runWhatIfs, whatIfField, checkPlan, seekAll,
 } from '../utils/lpChecks'
@@ -839,6 +840,7 @@ export default function SimTab() {
   const [dog,    setDog]    = useState({ enabled: false, size: 'small', yearsFromNow: 1, initialCost: 300_000, ...DOG_SIZES.small.defaults })
   const [car,    setCar]    = useState({ enabled: false, yearsFromNow: 3, price: 3_000_000, monthlyFee: 30_000, replaceEvery: 10, sellAge: 75 })
   const [whatIfs, setWhatIfs] = useState(DEFAULT_WHATIFS)  // もしも比較の条件
+  const chartFull = useFullscreen()  // 資産推移グラフの最大化
   const [work, setWork] = useState(DEFAULT_WORK)           // 60歳以降の働き方
   const [insPayEnd, setInsPayEnd] = useState({})          // 外貨保険ごとの払込をやめる年 { 保険名: 西暦 }
   const [insReceive, setInsReceive] = useState({})        // 外貨保険ごとの受け取る年 { 保険名: 西暦 }（なければ払込をやめる年）
@@ -1355,9 +1357,19 @@ export default function SimTab() {
 
       {/* 資産推移グラフ */}
       <div className="sim-section">
-        <h3 className="sim-section-title">資産推移</h3>
-        <div className="sim-chart-wrap">
-          <ResponsiveContainer width="100%" height={300}>
+        <div className="sim-chart-head">
+          <h3 className="sim-section-title">資産推移</h3>
+          <button type="button" className="lpy-btn" onClick={chartFull.open}>⛶ 最大化</button>
+        </div>
+        <div ref={chartFull.ref} className={chartFull.full ? 'lpy-full' : ''}>
+        {chartFull.full && (
+          <div className="lpy-toolbar">
+            <span className="lpy-unit">資産推移（スマホは横向きにすると見やすくなります）</span>
+            <button type="button" className="lpy-btn" onClick={chartFull.close}>✕ 閉じる</button>
+          </div>
+        )}
+        <div className={`sim-chart-wrap${chartFull.full ? ' sim-chart-wrap--full' : ''}`}>
+          <ResponsiveContainer width="100%" height={chartFull.full ? '100%' : 300}>
             <ComposedChart data={chartData} margin={{ top: 14, right: 12, left: 4, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#ebebeb" vertical={false} />
               <XAxis dataKey="age" tickFormatter={v => `${v}歳`} tick={{ fontSize: 11 }}
@@ -1387,6 +1399,7 @@ export default function SimTab() {
               )}
             </ComposedChart>
           </ResponsiveContainer>
+        </div>
         </div>
       </div>
 

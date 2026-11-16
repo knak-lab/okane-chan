@@ -417,3 +417,8 @@
 .sim-fundplan-row { flex-wrap: wrap; gap: 6px; margin-bottom: 6px; align-items: center; }
 .sim-row-del { border: none; background: none; color: #94A3B8; font-size: 1rem; cursor: pointer; padding: 0 4px; }
 .sim-oneoff-memo { width: 9em; text-align: left; }
+
+/* 資産推移：見出し＋最大化ボタン */
+.sim-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sim-chart-head .sim-section-title { margin-bottom: 0; }
+.lpy-full .sim-chart-wrap--full { flex: 1; min-height: 0; }
