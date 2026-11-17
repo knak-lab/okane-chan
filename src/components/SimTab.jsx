@@ -233,15 +233,14 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
 const KISO_FULL     = 831_696                       // 基礎年金の満額（年額の目安：月69,308円）
 const NET_TO_GROSS  = 0.77                          // 手取り ≒ 額面 × 0.77
 const GROSS_CAP     = 650_000 * 12 + 1_500_000 * 2  // 年金に反映される額面の上限（年）
-// joinKosei：これから厚生年金に入るか（false＝国民年金だけ。自営・扶養内のパートなど）
-function projectPension({ past, months, ageNow, startAge, incomeAt, growth, joinKosei = true }) {
+function projectPension({ past, months, ageNow, startAge, incomeAt, growth }) {
   let kisoMonths = Number(months) > 0 ? Number(months) : Math.max(0, Math.min(480, (ageNow - 20) * 12))
   const g = 1 + (growth || 0) / 100
   let kosei = 0, kiso = 0
   for (let age = ageNow; age < startAge; age++) {
     const t = age - ageNow
     const net = incomeAt(age, t)
-    if (joinKosei && net > 0) kosei += Math.min(net / NET_TO_GROSS / g ** t, GROSS_CAP) * 0.005481
+    if (net > 0) kosei += Math.min(net / NET_TO_GROSS / g ** t, GROSS_CAP) * 0.005481
     // 60歳までは働いていなくても国民年金（妻は第3号）で基礎年金が増える
     if (age < 60 && kisoMonths < 480) {
       const m = Math.min(12, 480 - kisoMonths)
@@ -912,7 +911,6 @@ export default function SimTab() {
     pensionMonthsMe: 0,  // 自動計算：あなたのこれまでの加入月数。0なら20歳から切れ目なく
     pensionPastWife:   0,
     pensionMonthsWife: 0,
-    pensionWifeKosei:  true, // 自動計算：妻はこれから厚生年金に入るか（false＝国民年金だけ）
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
     minMonths:       6,     // 合格ライン：手元のお金が生活費の何か月分を割らないか
     childAllowance:  true,  // 児童手当を収入に入れる
@@ -1225,7 +1223,6 @@ export default function SimTab() {
     })
     const wifeR = projectPension({
       past: Number(params.pensionPastWife) || (Number(params.wifePensionMonthly) || 0) * 12, months: params.pensionMonthsWife,
-      joinKosei: params.pensionWifeKosei !== false,
       ageNow: Number(params.wifeAge), startAge: Number(params.wifePensionStartAge), growth,
       incomeAt: (age, t) => workIncomeAt(wifeIncomeAt(wife, [child1, child2], t), work.wife, age, Number(params.wifeAge), growth),
     })
@@ -1715,12 +1712,6 @@ export default function SimTab() {
               value={params.pensionPastWife} onChange={setP('pensionPastWife')} />
             <Field label="妻：これまでの加入月数" unit="か月" note="0なら20歳から切れ目なく"
               value={params.pensionMonthsWife} onChange={setP('pensionMonthsWife')} />
-            <Choice label="妻：これからの年金" note={params.pensionWifeKosei !== false
-                ? '会社員などで厚生年金に入る（収入に応じて厚生年金が増える）'
-                : '国民年金だけ（自営・扶養内のパートなど。基礎年金だけ増える）'}
-              options={[['kosei', '厚生年金'], ['kokumin', '国民年金だけ']]}
-              value={params.pensionWifeKosei !== false ? 'kosei' : 'kokumin'}
-              onChange={v => setParams(p => ({ ...p, pensionWifeKosei: v === 'kosei' }))} />
           </>) : (<>
             <Field label="あなたの年金" unit="円 / 月" note="資産タブの年金（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
             <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />
