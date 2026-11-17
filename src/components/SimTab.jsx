@@ -626,6 +626,25 @@ function SumCard({ label, value, sub, pos, neg }) {
 }
 
 // 資産推移グラフの系列（色は dataviz の検証済みカテゴリ色。名前は凡例とツールチップに必ず出す）
+// 西暦の入力欄。入力中は自由に消したり打ったりでき、4桁の年（今年〜70年後）になったときだけ反映する。
+// 範囲外のまま離れたら元の年に戻す（途中の値で計算が走って固まらないように）
+const YEAR_SPAN = 70
+function YearInput({ value, onCommit }) {
+  const [draft, setDraft] = useState(null)
+  const thisYear = new Date().getFullYear()
+  const ok = (y) => /^\d{4}$/.test(y) && Number(y) >= thisYear && Number(y) <= thisYear + YEAR_SPAN
+  return (
+    <input type="text" inputMode="numeric" className="sim-mini-input sim-mini-input--year"
+      value={draft ?? String(value)}
+      onChange={e => {
+        const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 4)
+        setDraft(v)
+        if (ok(v)) onCommit(Number(v))
+      }}
+      onBlur={() => setDraft(null)} />
+  )
+}
+
 // usable: 使えるお金か。使えないお金（受け取り前のDC・家）は薄く塗り、使えるお金の上に積む
 const SERIES = [
   { key: 'cash',   name: '預金',       color: '#2a78d6', usable: true },
@@ -1051,8 +1070,9 @@ export default function SimTab() {
   const insPolicies = useMemo(() => {
     if (!insData) return []
     const thisYear = new Date().getFullYear()
-    const payEndOf = (name) => Math.max(thisYear, Number(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge)) || thisYear)
-    const receiveOf = (name) => Math.max(thisYear, Number(insReceive[name] ?? payEndOf(name)) || payEndOf(name))
+    const clampYear = (y, fb) => Math.min(thisYear + YEAR_SPAN, Math.max(thisYear, Number(y) || fb))
+    const payEndOf = (name) => clampYear(insPayEnd[name] ?? defaultPayEndYear(name, thisYear, params.currentAge), thisYear)
+    const receiveOf = (name) => clampYear(insReceive[name] ?? payEndOf(name), payEndOf(name))
     const yearOf = (name) => Math.min(payEndOf(name), receiveOf(name))
     const surrender = Object.fromEntries(surrenderAtYears(insData, yearOf).map(d => [d.name, d]))
     return (insData.masters || []).map(m => {
@@ -1525,13 +1545,11 @@ export default function SimTab() {
                 <div key={x.name} className="sim-ef sim-ins">
                   <span className="sim-ef-label"><strong>{x.name}</strong><span className="sim-badge">取得</span></span>
                   <div className="sim-ef-row sim-work-row">
-                    <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.endYear}
-                      onChange={e => setInsPayEnd(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
+                    <YearInput value={x.endYear} onCommit={y => setInsPayEnd(m => ({ ...m, [x.name]: y }))} />
                     <span className="sim-ef-unit">年（{x.payEndAge}歳）まで払う</span>
                   </div>
                   <div className="sim-ef-row sim-work-row">
-                    <input type="number" inputMode="numeric" className="sim-mini-input sim-mini-input--year" value={x.receiveYear}
-                      onChange={e => setInsReceive(m => ({ ...m, [x.name]: Number(e.target.value) || 0 }))} />
+                    <YearInput value={x.receiveYear} onCommit={y => setInsReceive(m => ({ ...m, [x.name]: y }))} />
                     <span className="sim-ef-unit">年（{x.receiveAge}歳）に解約して受け取る{x.linked ? '（払込をやめる年と同じ）' : ''}</span>
                     {!x.linked && (
                       <button type="button" className="sim-link-btn"
