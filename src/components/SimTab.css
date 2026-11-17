@@ -422,3 +422,15 @@
 .sim-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sim-chart-head .sim-section-title { margin-bottom: 0; }
 .lpy-full .sim-chart-wrap--full { flex: 1; min-height: 0; }
+
+/* 内訳などのダイアログ */
+.sim-dialog { width: min(92vw, 520px); max-height: 85vh; border: none; border-radius: 12px; padding: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+.sim-dialog::backdrop { background: rgba(0,0,0,.4); }
+.sim-dialog h4 { margin: 0 0 10px; font-size: 0.95rem; color: #003087; }
+.sim-dialog-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.sim-dialog-table th, .sim-dialog-table td { padding: 6px 4px; border-bottom: 1px solid #eee; text-align: left; vertical-align: top; }
+.sim-dialog-table td:last-child, .sim-dialog-table th:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sim-dialog-table small { display: block; color: #8b949e; font-size: 0.7rem; margin-top: 2px; }
+.sim-dialog-total td { font-weight: 700; border-bottom: none; }
+.sim-dialog-note { font-size: 0.74rem; color: #57606a; margin: 8px 0 0; line-height: 1.5; }
+.sim-dialog-close { display: block; margin: 14px auto 0; padding: 6px 24px; border: 1px solid #c9d3e6; border-radius: 999px; background: #fff; color: #003087; font-weight: 600; cursor: pointer; }

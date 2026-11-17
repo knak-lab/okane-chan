@@ -91,6 +91,66 @@ const DOG_SIZES = {
   small: { label: '中型・小型犬', defaults: { annualCost: 350_000, years: 15 } },
 }
 
+// 犬の年間費用の内訳（目安・万円/年）。「内訳」ボタンのダイアログで見せる
+const DOG_BREAKDOWN = {
+  large: {
+    rows: [
+      ['フード・おやつ', '15〜20', '1日400〜600gほど食べる'],
+      ['予防・健康診断', '5〜8', 'ワクチン・狂犬病・フィラリア/ノミダニ薬（体重で高くなる）・健診'],
+      ['ペット保険', '6〜12', '大型犬は高め。年齢とともに上がる'],
+      ['病気・けが（保険で出ない分）', '5〜10', '歳をとると関節・心臓・腫瘍などで増える'],
+      ['トリミング・シャンプー', '3〜10', '長毛（ゴールデンなど）は月1回 8千〜1.2万円'],
+      ['消耗品', '3〜5', 'シーツ・おもちゃ・首輪・ベッドなど'],
+      ['預け先・ペットホテル', '2〜5', '旅行・帰省のとき'],
+    ],
+    total: '約40〜65',
+    notes: [
+      'ゴールデン：年55万円・12年が目安。寿命10〜12年、がん・股関節・皮膚や耳の病気が多い。最後の数年は年80万円くらいかかることも',
+      'ペット保険は「70%補償・手術の上限が高いもの」がおすすめ',
+    ],
+  },
+  small: {
+    rows: [
+      ['フード・おやつ', '5〜10', '体の大きさで変わる'],
+      ['予防・健康診断', '3〜6', 'ワクチン・狂犬病・フィラリア/ノミダニ薬・健診'],
+      ['ペット保険', '4〜8', '年齢とともに上がる'],
+      ['病気・けが（保険で出ない分）', '3〜8', '歯・皮膚・関節・心臓など'],
+      ['トリミング・シャンプー', '0〜10', 'トイプードルなどは月1回 6千〜1万円、短毛ならほぼ0'],
+      ['消耗品', '2〜4', 'シーツ・おもちゃ・服など'],
+      ['預け先・ペットホテル', '2〜4', '旅行・帰省のとき'],
+    ],
+    total: '約20〜50',
+    notes: [],
+  },
+}
+const DOG_INITIAL = '子犬代（ブリーダー30〜50万円、保護犬なら数万円）＋ケージ・車用品・最初のワクチン・避妊去勢などで10〜20万円'
+
+function DogBreakdown({ size }) {
+  const ref = useRef(null)
+  const d = DOG_BREAKDOWN[size] || DOG_BREAKDOWN.small
+  return (
+    <>
+      <button type="button" className="sim-link-btn" onClick={() => ref.current?.showModal()}>ⓘ 内訳</button>
+      <dialog ref={ref} className="sim-dialog" onClick={e => { if (e.target === ref.current) ref.current.close() }}>
+        <h4>{DOG_SIZES[size]?.label}の年間費用の内訳（目安）</h4>
+        <table className="sim-dialog-table">
+          <thead><tr><th>項目</th><th>万円/年</th></tr></thead>
+          <tbody>
+            {d.rows.map(([k, v, note]) => (
+              <tr key={k}><td>{k}<small>{note}</small></td><td>{v}</td></tr>
+            ))}
+            <tr className="sim-dialog-total"><td>合計</td><td>{d.total}</td></tr>
+          </tbody>
+        </table>
+        <p className="sim-dialog-note">お迎え費用：{DOG_INITIAL}</p>
+        {d.notes.map(n => <p key={n} className="sim-dialog-note">{n}</p>)}
+        <p className="sim-dialog-note">若いうちは少なく、老後は医療費で増えます。年間費用は全期間の平均のつもりで入れてください</p>
+        <button type="button" className="sim-dialog-close" onClick={() => ref.current?.close()}>閉じる</button>
+      </dialog>
+    </>
+  )
+}
+
 const homePrice = (home) => Number(home.landPrice) + Number(home.buildingPrice)
 // 固定資産税＋都市計画税（年額）の目安。k は購入から何年目か（0 が購入の年）
 //  土地：評価額＝価格の70%。住宅用地の特例（200m²以下）で固定資産税1.4%は1/6、都市計画税0.3%は1/3
@@ -1695,6 +1755,7 @@ export default function SimTab() {
                   value={dog.initialCost} onChange={v => setDog(p => ({ ...p, initialCost: v }))} />
                 <EventNumField label="年間費用" unit="円 / 年" wide
                   value={dog.annualCost} onChange={v => setDog(p => ({ ...p, annualCost: v }))} />
+                <DogBreakdown size={dog.size} />
                 <EventNumField label="飼う年数" unit="年"
                   value={dog.years} onChange={v => setDog(p => ({ ...p, years: v }))} />
                 <p className="sim-ef-note">
