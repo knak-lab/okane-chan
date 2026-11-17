@@ -18,7 +18,7 @@ export default function UpdateBanner() {
         const r = await fetch(`${VERSION_URL}?t=${Date.now()}`, { cache: 'no-store' })
         if (!r.ok) return
         const { build } = await r.json()
-        if (build && build !== __BUILD_ID__) setHasUpdate(true)
+        if (build && build !== __BUILD_ID__) setHasUpdate(build)
       } catch { /* 通信できないときは次の機会に */ }
     }
     check()
@@ -35,7 +35,8 @@ export default function UpdateBanner() {
   return (
     <div className="update-banner" role="status">
       <span>🔄 新しいバージョンがあります</span>
-      <button type="button" onClick={() => window.location.reload()}>更新</button>
+      {/* 普通の再読み込みだと、端末に残った古い画面（最大10分）を読んで真っ白になることがあるので、URLを変えて必ず新しい版を取りに行く */}
+      <button type="button" onClick={() => window.location.replace(`${import.meta.env.BASE_URL}?v=${hasUpdate}${window.location.hash}`)}>更新</button>
     </div>
   )
 }
