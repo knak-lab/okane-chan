@@ -224,6 +224,36 @@ function workIncomeAt(baseNow, w, age, ageNow, incomeGrowth) {
   return v
 }
 
+// ─── 年金の自動計算 ─────────────────────────────
+// 65歳の年金（年額・今の賃金水準の円）＝ ねんきん定期便の「これまでの加入実績に応じた年金額」＋ これから払う分
+//   厚生年金：額面の年収 × 5.481/1000（額面は手取り÷0.77で推計。標準報酬の上限 月65万＋賞与150万×2回）
+//   基礎年金：満額 × 払う月数/480（60歳まで。これまでの月数と合わせて480か月で頭打ち）
+//   将来の年収は伸び率の分を割り戻して今の賃金水準にする（年金は賃金の伸びで再評価されるため）
+//   受給開始より後に働いた分（在職定時改定）は入れない
+const KISO_FULL     = 831_696                       // 基礎年金の満額（年額の目安：月69,308円）
+const NET_TO_GROSS  = 0.77                          // 手取り ≒ 額面 × 0.77
+const GROSS_CAP     = 650_000 * 12 + 1_500_000 * 2  // 年金に反映される額面の上限（年）
+function projectPension({ past, months, ageNow, startAge, incomeAt, growth }) {
+  let kisoMonths = Number(months) > 0 ? Number(months) : Math.max(0, Math.min(480, (ageNow - 20) * 12))
+  const g = 1 + (growth || 0) / 100
+  let kosei = 0, kiso = 0
+  for (let age = ageNow; age < startAge; age++) {
+    const t = age - ageNow
+    const net = incomeAt(age, t)
+    if (net > 0) kosei += Math.min(net / NET_TO_GROSS / g ** t, GROSS_CAP) * 0.005481
+    // 60歳までは働いていなくても国民年金（妻は第3号）で基礎年金が増える
+    if (age < 60 && kisoMonths < 480) {
+      const m = Math.min(12, 480 - kisoMonths)
+      kisoMonths += m
+      kiso += KISO_FULL * m / 480
+    }
+  }
+  const pastAmt = Number(past) || 0
+  return { past: pastAmt, kosei, kiso, total: pastAmt + kosei + kiso }
+}
+// 受給開始の年齢による増減（65歳より遅いと1か月0.7%増、早いと0.4%減）
+const pensionAdjAt = (startAge) => (startAge >= 65 ? 1 + 0.007 * 12 * (startAge - 65) : 1 - 0.004 * 12 * (65 - startAge))
+
 // 資産は「預金」「投資（投信）」「DC」に分けて増やす（投信とDCは想定利回り、預金は預金金利）。
 // 手取り（本人＋妻）から生活費（月平均支出＋家賃）と投信積立を引いた残りが預金に入る。
 // DC（企業型確定拠出年金）が退職金。掛金は給与天引き・会社拠出なので手取りからは引かず、定年まで DC に入る。
@@ -244,7 +274,7 @@ const MODEL_ASSUMPTIONS = [
   '家は「土地（値上がり率）＋建物（耐用年数で残存割合まで直線で減る）− ローン残高」を純資産として別に表示。生活費には使えないので、使えるお金・資産が尽きる年齢・合格ラインには入れない',
   '収入は「60歳以降の働き方」どおり（夫婦それぞれの年齢で、昇進などの昇給・昇給停止・減額・65歳以降の年収・引退）。昇給は「◯年後に手取り年◯円になる」で入れ、その年からは指定額に伸び率と減額の割合を掛ける。65歳以降の年収は物価では増やさない',
   '働きながら年金を受け取っても減らさない（在職老齢年金の減額は考えない）。退職金・生活費の切り替えは「退職予定年齢」で行う',
-  'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は入力した額のまま）',
+  'あなたの年金は65歳の見込み額を元に、繰下げは1か月0.7%増・繰上げは1か月0.4%減で計算（妻の年金は、見込み額を入れるときは入力した額のまま、自動計算では妻も同じく増減）。自動計算は定期便のこれまでの分＋これからの年収で厚生年金・基礎年金を足す（額面は手取り÷0.77で推計）',
   '教育費は子が6〜22歳の16年間に均等割り。児童手当（0〜2歳 月1.5万・3〜18歳 月1万）は収入に入れる。高校/大学無償化・奨学金は入っていない',
   '医療費・介護費・老人ホームなど高齢期の特別支出は入っていない（生活費×退職後割合のみ）',
   '借入金は 土地＋建物＋諸経費−頭金（諸経費もローンに入れ、頭金で相殺）。購入の年に現金で払うのは頭金だけ',
@@ -320,7 +350,7 @@ function runSim(p, events) {
     // 妻の年金は妻の年齢で受給開始（あなたの退職前に始まる場合も含む）
     const wifePension   = wifeAge + t >= wifePensionStartAge ? wifePensionMonthly * 12 * infl : 0
     // あなたの年金は65歳の見込み額。繰下げは1か月0.7%増、繰上げは1か月0.4%減
-    const pensionAdj = pensionStartAge >= 65 ? 1 + 0.007 * 12 * (pensionStartAge - 65) : 1 - 0.004 * 12 * (65 - pensionStartAge)
+    const pensionAdj = pensionAdjAt(pensionStartAge)
     const annualPension = (hasPension ? pensionMonthly * pensionAdj * 12 * infl : 0) + wifePension  // 働いていても受け取る（在職老齢年金の減額は考えない）
 
     // ライフイベントコスト。表に出すため項目ごとにも記録する（b）
@@ -874,6 +904,11 @@ export default function SimTab() {
     wifePensionMonthly:  0,  // 妻の年金（月額）
     wifePensionStartAge: 65, // 妻の年金受給開始年齢
     pensionStartAge: 65,
+    pensionMode:     'manual', // 年金：manual（見込み額を入れる）| auto（自動計算）
+    pensionPastMe:   0,  // 自動計算：あなたの「これまでの加入実績に応じた年金額」（年額）。0なら資産タブの見込み額×12
+    pensionMonthsMe: 0,  // 自動計算：あなたのこれまでの加入月数。0なら20歳から切れ目なく
+    pensionPastWife:   0,
+    pensionMonthsWife: 0,
     retireExpenseRate: 100, // 退職後の生活費（現役時に対する割合）
     minMonths:       6,     // 合格ライン：手元のお金が生活費の何か月分を割らないか
     childAllowance:  true,  // 児童手当を収入に入れる
@@ -1120,7 +1155,7 @@ export default function SimTab() {
 
 
   const { retireAge, lifeExpectancy, pensionStartAge } = params
-  const { monthlyExpense, pensionMonthly } = vals
+  const { monthlyExpense } = vals
 
   // ─── 外貨保険（保険ごと） ─────────────────────────
   // 保険ごとに「払込をやめる年」と「受け取る年」を決める（受け取る年の初期値は払込をやめる年）。
@@ -1176,6 +1211,28 @@ export default function SimTab() {
   // 合計は LPチェック・AI相談・資産の要約で使う
   useEffect(() => { setVals(v => (v.insuranceReturn === insuranceReturnTotal ? v : { ...v, insuranceReturn: insuranceReturnTotal })) }, [insuranceReturnTotal])
 
+  // ─── 年金（自動計算なら、これからの働き方から計算した額を使う） ───────
+  const pensionAuto = useMemo(() => {
+    const growth = params.incomeGrowth
+    const me = projectPension({
+      past: Number(params.pensionPastMe) || vals.pensionMonthly * 12, months: params.pensionMonthsMe,
+      ageNow: params.currentAge, startAge: params.pensionStartAge, growth,
+      incomeAt: (age) => workIncomeAt(vals.myIncome, work.me, age, params.currentAge, growth),
+    })
+    const wifeR = projectPension({
+      past: Number(params.pensionPastWife) || (Number(params.wifePensionMonthly) || 0) * 12, months: params.pensionMonthsWife,
+      ageNow: Number(params.wifeAge), startAge: Number(params.wifePensionStartAge), growth,
+      incomeAt: (age, t) => workIncomeAt(wifeIncomeAt(wife, [child1, child2], t), work.wife, age, Number(params.wifeAge), growth),
+    })
+    return { me, wife: wifeR }
+  }, [params, vals.myIncome, vals.pensionMonthly, wife, work, child1, child2])
+  const pensionIsAuto   = params.pensionMode === 'auto'
+  // あなたは65歳の額（runSim で受給開始の年齢に合わせて増減）、妻は受給開始の年齢の増減を済ませた額
+  const pensionMeMonthly   = pensionIsAuto ? Math.round(pensionAuto.me.total / 12) : vals.pensionMonthly
+  const pensionWifeMonthly = pensionIsAuto
+    ? Math.round(pensionAuto.wife.total * pensionAdjAt(Number(params.wifePensionStartAge)) / 12)
+    : params.wifePensionMonthly
+
   // ─── シミュレーション ────────────────────────────
   const simParams = useMemo(() => ({
     startAge:        params.currentAge,
@@ -1199,10 +1256,10 @@ export default function SimTab() {
     monthlyExpense:  vals.monthlyExpense,
     yutoriAnnual:    vals.yutoriAnnual,
     wifeAge:             params.wifeAge,
-    wifePensionMonthly:  params.wifePensionMonthly,
+    wifePensionMonthly:  pensionWifeMonthly,
     wifePensionStartAge: params.wifePensionStartAge,
     monthlyRent:     params.monthlyRent,
-    pensionMonthly:  vals.pensionMonthly,
+    pensionMonthly:  pensionMeMonthly,
     insuranceLumps:  insPolicies.filter(x => x.jpy > 0).map(x => ({ age: x.receiveAge, amount: x.jpy })),
     retireExpenseRate: params.retireExpenseRate,
     work,
@@ -1210,7 +1267,7 @@ export default function SimTab() {
     insuranceValues,
     childAllowance:  params.childAllowance,
     fundPlan,
-  }), [params, vals, wife, work, insPolicies, insuranceValues, fundPlan])
+  }), [params, vals, wife, work, insPolicies, insuranceValues, fundPlan, pensionMeMonthly, pensionWifeMonthly])
 
   // ライフイベント（オンにしたものだけ）込みの1本で計算する
   // マイホームの土地・建物・頭金は homest の予算（お金ちゃんの「家」タブと同じ画面）から受け取る
@@ -1255,7 +1312,7 @@ export default function SimTab() {
   // 子どもが生まれる前は、妻の手取りを0円として計算している
   const wifeBeforeBirth  = [child1, child2].some(c => c.enabled) &&
     Math.max(...[child1, child2].filter(c => c.enabled).map(c => Number(c.currentAge))) < 0
-  const totalPension     = pensionMonthly + params.wifePensionMonthly
+  const totalPension     = pensionMeMonthly + pensionWifeMonthly
   // 退職後の住居費（今の物価・月額）。シミュレーションと同じく、マイホーム購入後は家賃を止めて維持費とローン返済を入れる
   const retireT          = retireAge - params.currentAge
   const homeOn           = homeEff.enabled && Number(homeEff.yearsFromNow) <= retireT
@@ -1640,12 +1697,38 @@ export default function SimTab() {
       <Section icon="🧓" title="年金"
         summary={`夫婦で月${man1(totalPension)}（あなた${pensionStartAge}歳〜／妻${params.wifePensionStartAge}歳〜）`}>
         <div className="sim-fields">
-          <Field label="あなたの年金" unit="円 / 月" note="資産タブの年金（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
+          <Choice label="年金の見込み額" note={pensionIsAuto ? '定期便のこれまでの分＋これからの働き方で計算' : 'ねんきん定期便の見込み額を入れる'}
+            options={[['auto', '自動計算'], ['manual', '見込み額を入れる']]} value={params.pensionMode || 'manual'} onChange={setP('pensionMode')} />
+          {pensionIsAuto ? (<>
+            <Field label="あなた：これまでの加入実績の年金額" unit="円 / 年" wide
+              note={`ねんきん定期便の額（年額）。0なら資産タブの見込み額×12（${fmt(vals.pensionMonthly * 12)}）`}
+              value={params.pensionPastMe} onChange={setP('pensionPastMe')} />
+            <Field label="あなた：これまでの加入月数" unit="か月" note="定期便の「加入期間の合計」。0なら20歳から切れ目なく"
+              value={params.pensionMonthsMe} onChange={setP('pensionMonthsMe')} />
+            <Field label="妻：これまでの加入実績の年金額" unit="円 / 年" wide note="妻のねんきん定期便の額（年額）"
+              value={params.pensionPastWife} onChange={setP('pensionPastWife')} />
+            <Field label="妻：これまでの加入月数" unit="か月" note="0なら20歳から切れ目なく"
+              value={params.pensionMonthsWife} onChange={setP('pensionMonthsWife')} />
+          </>) : (<>
+            <Field label="あなたの年金" unit="円 / 月" note="資産タブの年金（ねんきん定期便）より" fetched wide value={vals.pensionMonthly} onChange={setV('pensionMonthly')} />
+            <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />
+          </>)}
           <Field label="あなたの受給開始" unit="歳" note="60〜75歳。65歳より遅いと1か月0.7%増、早いと0.4%減"
             value={params.pensionStartAge} onChange={setP('pensionStartAge')} />
-          <Field label="妻の年金" unit="円 / 月" note="ねんきん定期便の見込み額" wide value={params.wifePensionMonthly} onChange={setP('wifePensionMonthly')} />
-          <Field label="妻の受給開始" unit="歳（妻の年齢）" value={params.wifePensionStartAge} onChange={setP('wifePensionStartAge')} />
+          <Field label="妻の受給開始" unit="歳（妻の年齢）" note={pensionIsAuto ? '自動計算では、あなたと同じく早い・遅いで増減' : ''}
+            value={params.wifePensionStartAge} onChange={setP('wifePensionStartAge')} />
         </div>
+        {pensionIsAuto && (
+          <div className="sim-ef-note sim-pension-auto">
+            {[['あなた', pensionAuto.me, params.pensionStartAge], ['妻', pensionAuto.wife, params.wifePensionStartAge]].map(([who, r, st]) => (
+              <p key={who}>
+                <strong>{who}</strong>（受給開始{st}歳まで）：65歳の額 年{fmt(r.total)}（月{fmt(r.total / 12)}）
+                ＝ これまで {fmt(r.past)} ＋ これからの厚生年金 {fmt(r.kosei)} ＋ 基礎年金 {fmt(r.kiso)}
+              </p>
+            ))}
+            <p>額面は手取り÷0.77で推計、基礎年金の満額は月69,308円で計算。受給開始より後に働いた分は入れていません。今の賃金水準の金額です</p>
+          </div>
+        )}
         <p className="sim-ef-note sim-section-foot">
           夫婦の年金 月{fmt(totalPension)}（今の物価で。シミュレーションでは物価上昇率で増やす）
         </p>
