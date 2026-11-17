@@ -411,6 +411,8 @@ function runSim(p, events) {
         // 購入時に頭金と諸経費（物件価格×諸経費率。登記・仲介手数料・税など）を現金で払う
         // 購入の年に払うのは頭金だけ。諸経費は借入金に入っている
         if (t === bought) cost('homeDown', Number(home.downPayment))
+        // 親などからの贈与（頭金に充てる）は購入の年の収入
+        if (t === bought && Number(home.gift) > 0) { extraIncome += Number(home.gift); b.gift = Number(home.gift) }
         if (t >= bought && t < bought + Number(home.loanYears)) cost('loan', homeLoan)
         // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
         const deductYears = Number(home.deductYears ?? 13)
@@ -1280,7 +1282,8 @@ export default function SimTab() {
   const homestLinked = Boolean(homestPlan?.total > 0)
   const homeEff = useMemo(() => (homestLinked
     ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000,
-        miscCost: homestPlan.miscCost != null ? homestPlan.miscCost * 10_000 : null }
+        miscCost: homestPlan.miscCost != null ? homestPlan.miscCost * 10_000 : null,
+        gift: (Number(homestPlan.gift) || 0) * 10_000 }
     : home), [home, homestPlan, homestLinked])
 
   const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff, ninkatsu, oneOffs }), [child1, child2, car, dog, homeEff, ninkatsu, oneOffs])
@@ -1863,6 +1866,7 @@ export default function SimTab() {
                 {homestLinked ? (
                   <p className="sim-ef-note">
                     🏡 土地 {fmt(homeEff.landPrice)} ／ 建物 {fmt(homeEff.buildingPrice)} ／ 頭金 {fmt(homeEff.downPayment)}
+                    {homeEff.gift > 0 && `（うち贈与 ${fmt(homeEff.gift)}。購入の年の収入に入れる）`}
                     （「家」タブ＝homestの予算から。変更は「家」タブで）
                   </p>
                 ) : (

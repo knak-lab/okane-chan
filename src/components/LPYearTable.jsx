@@ -13,7 +13,7 @@ const man = (v) => {
 const DETAIL = [
   { group: '収入', cls: 'in', cols: [
     ['incomeMe', 'あなた'], ['incomeWife', '妻'], ['pension', '年金'],
-    ['allowance', '児童手当'], ['loanDeduct', 'ローン控除'], ['otherIncome', '臨時・返戻・DC'],
+    ['allowance', '児童手当'], ['loanDeduct', 'ローン控除'], ['otherIncome', '臨時・贈与・返戻・DC'],
   ] },
   { group: '支出', cls: 'out', cols: [
     ['living', '生活'], ['childLiving', '子供生活'], ['dog', 'ワン'], ['housing', '家賃/ローン'],
