@@ -168,6 +168,43 @@ const homeFee = (home) => (home.miscCost != null ? Number(home.miscCost) : homeP
 // 借入金＝土地＋建物＋諸経費−頭金（諸経費もローンに入れ、頭金で相殺する）
 const loanPrincipal = (home) => homePrice(home) + homeFee(home) - Number(home.downPayment)
 
+// ローンの返済スケジュール（繰上げ返済込み）。k＝購入から何年目か（0が購入の年）
+//   毎月の元利均等返済を12か月分まとめ、年末に繰上げ返済する
+//   期間短縮：毎月の返済額はそのまま、早く終わる／返済額を減らす：終わる年はそのまま、毎月の返済額を下げる
+//   戻り値 [{ pay: その年の返済額, prepay: 繰上げ返済額, bal: 年末の残高 }]
+function loanSchedule(home, ageNow) {
+  const principal = loanPrincipal(home)
+  const years = Number(home.loanYears) || 0
+  if (!home?.enabled || principal <= 0 || years <= 0) return []
+  const i = (Number(home.loanRate) || 0) / 100 / 12
+  let left = years * 12
+  let bal = principal
+  const pmtOf = (b, n) => (n <= 0 ? b : i === 0 ? b / n : b * i / (1 - (1 + i) ** -n))
+  let pmt = pmtOf(bal, left)
+  const buyAge = ageNow + Number(home.yearsFromNow)
+  const out = []
+  for (let k = 0; k < years && bal > 0.5; k++) {
+    let pay = 0
+    for (let m = 0; m < 12 && bal > 0.5 && left > 0; m++) {
+      const p = Math.min(pmt, bal * (1 + i))
+      bal = bal * (1 + i) - p
+      pay += p
+      left--
+    }
+    let prepay = 0
+    for (const r of home.prepays || []) {
+      if (Number(r.age) !== buyAge + k || bal <= 0.5) continue
+      const amt = r.full ? bal : Math.min(Number(r.amount) || 0, bal)
+      bal -= amt
+      prepay += amt
+      if (r.mode === 'reduce' && bal > 0.5) pmt = pmtOf(bal, left)
+    }
+    if (bal < 0.5) bal = 0
+    out.push({ pay, prepay, bal })
+  }
+  return out
+}
+
 // 元利均等返済の年間返済額
 function annualLoanPayment(principal, ratePercent, years) {
   if (principal <= 0 || years <= 0) return 0
@@ -307,9 +344,7 @@ function runSim(p, events) {
   const planRows = (kind, age) => (fundPlan || []).filter(r => r.kind === kind && age >= Number(r.fromAge) && age <= Number(r.toAge))
 
   const home = events?.home
-  const homeLoan = home?.enabled
-    ? annualLoanPayment(loanPrincipal(home), home.loanRate, Number(home.loanYears))
-    : 0
+  const sched = home?.enabled ? loanSchedule(home, startAge) : []
   // 外貨保険を一部解約したときの残りの割合（足りないときに崩すと減る。返戻金・保険料も同じ割合で減る）
   let insFactor = 1
 
@@ -318,7 +353,7 @@ function runSim(p, events) {
     // 外貨保険は受け取るまで「今解約したらもらえる額」を資産に数える（いつでも解約できるため）
     const ins = (insuranceValues[age] || 0) * insFactor
     // 家は「土地＋建物の価値 − ローン残高」を資産（純資産）として別に数える。生活費には使えないので「使えるお金」には入れない
-    const homeEquity = homeEquityAt(home, t)
+    const homeEquity = homeEquityAt(home, t, sched)
     data.push({
       age,
       // 使えるお金の合計（預金はマイナスもありうる）。DCは受け取る年齢までは引き出せないので入れない
@@ -413,13 +448,18 @@ function runSim(p, events) {
         if (t === bought) cost('homeDown', Number(home.downPayment))
         // 親などからの贈与（頭金に充てる）は購入の年の収入
         if (t === bought && Number(home.gift) > 0) { extraIncome += Number(home.gift); b.gift = Number(home.gift) }
-        if (t >= bought && t < bought + Number(home.loanYears)) cost('loan', homeLoan)
+        const yr = t >= bought ? sched[t - bought] : null
+        if (yr) {
+          cost('loan', yr.pay)
+          if (yr.prepay > 0) cost('prepay', yr.prepay)
+        }
         // 住宅ローン控除：年末のローン残高（借入限度額まで）× 0.7% を、購入から控除期間（初期13年）戻す
         const deductYears = Number(home.deductYears ?? 13)
         if (t >= bought && t < bought + deductYears) {
-          // 控除の対象は家（土地・建物）の分だけ。諸経費の分は借入金の割合で除く
-          const share = homePrice(home) > 0 ? homePrice(home) / (homePrice(home) + homeFee(home)) : 0
-          const balance = loanBalance(loanPrincipal(home), home.loanRate, Number(home.loanYears), t - bought + 1) * share
+          // 控除の対象は家（土地・建物と付帯工事などの工事費）の分だけ。それ以外の諸経費の分は借入金の割合で除く
+          const covered = homePrice(home) + Math.min(Number(home.buildExtra) || 0, homeFee(home))
+          const share = homePrice(home) > 0 ? covered / (homePrice(home) + homeFee(home)) : 0
+          const balance = (sched[t - bought]?.bal || 0) * share
           const d = Math.min(balance, Number(home.deductLimit ?? 30_000_000)) * 0.007
           allowance += d
           b.loanDeduct = d
@@ -488,16 +528,16 @@ function runSim(p, events) {
       living: R(monthlyExpense * livingRate * 12 * infl), yutori: R(yutoriAnnual * livingRate * infl),
       housing: R(rentNet + (b.loan || 0)), homeKeep: R((b.homeKeep || 0) + (b.propertyTax || 0)), homeDown: R(b.homeDown || 0),
       childLiving: R(b.childLiving || 0), edu: R(b.edu || 0), car: R(b.car || 0), dog: R(b.dog || 0),
-      ninkatsu: R(b.ninkatsu || 0), oneOff: R(b.oneOff || 0), premium: R(premium),
+      ninkatsu: R(b.ninkatsu || 0), oneOff: R(b.oneOff || 0), premium: R(premium), prepay: R(b.prepay || 0),
       fundInvest: R(fundInvest), withdrawn: R(withdrawn), autoDraw: R(autoIns + autoInvest),
       endCash: R(cash), endInvest: R(invest), endIns: R((insuranceValues[age + 1] || 0) * insFactor),
       // 年末の時点で受け取り年齢前なら、DCは使えないお金
       endDcFree: age + 1 >= dcAge ? R(dc) : 0, endDcLock: age + 1 >= dcAge ? 0 : R(dc),
-      endHome: R(homeEquityAt(home, t + 1)),
+      endHome: R(homeEquityAt(home, t + 1, sched)),
     }
     flow.income = flow.incomeMe + flow.incomeWife + flow.pension + flow.allowance + flow.loanDeduct + flow.otherIncome
     flow.expense = flow.living + flow.yutori + flow.housing + flow.homeKeep + flow.homeDown + flow.childLiving + flow.edu
-      + flow.car + flow.dog + flow.ninkatsu + flow.oneOff + flow.premium
+      + flow.car + flow.dog + flow.ninkatsu + flow.oneOff + flow.premium + flow.prepay
     flow.balance = flow.income - flow.expense
     flow.endUsable = flow.endCash + flow.endInvest + flow.endIns + flow.endDcFree
     flow.endLocked = flow.endDcLock + flow.endHome
@@ -509,7 +549,7 @@ function runSim(p, events) {
 }
 
 // 家の純資産 ＝ 土地（値上がり率で増減）＋ 建物（耐用年数で残存割合まで直線で減る）− ローン残高
-function homeEquityAt(home, t) {
+function homeEquityAt(home, t, sched) {
   if (!home?.enabled) return 0
   const k = t - Number(home.yearsFromNow)
   if (k < 0) return 0
@@ -517,7 +557,9 @@ function homeEquityAt(home, t) {
   const life = Math.max(1, Number(home.buildingLife) || 30)
   const residual = Math.min(100, Math.max(0, Number(home.buildingResidual) || 0)) / 100
   const building = Number(home.buildingPrice) * Math.max(residual, 1 - (k / life) * (1 - residual))
-  return land + building - loanBalance(loanPrincipal(home), home.loanRate, Number(home.loanYears), k)
+  // ローン残高：返済スケジュール（繰上げ返済込み）があればその年初の残高
+  const debt = sched ? (k === 0 ? loanPrincipal(home) : (sched[k - 1]?.bal || 0)) : loanBalance(loanPrincipal(home), home.loanRate, Number(home.loanYears), k)
+  return land + building - debt
 }
 
 // 元利均等返済で k 年払ったあとのローン残高
@@ -875,6 +917,42 @@ function YenInsurance({ rows, onChange }) {
         学資保険・円建ての養老/終身保険など。受け取る年までは「今解約したらもらえる額」から受取額まで毎年同じだけ増える前提で資産（保険）に数えます。
         保険料は来年から払込をやめる年まで（今年の分は払い済み）。足りないときは外貨保険と同じく預金の次に崩します
       </p>
+    </div>
+  )
+}
+
+// 繰上げ返済（あなたの年齢で指定）
+const newPrepay = (age) => ({ id: `p${Date.now()}`, age, amount: 5_000_000, full: false, mode: 'shorten' })
+function Prepays({ rows, onChange, defaultAge, deductEndAge, endAge, origEndAge }) {
+  const upd = (id, patch) => onChange(rows.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  return (
+    <div className="sim-ef">
+      <span className="sim-ef-label">繰上げ返済</span>
+      {rows.map(r => (
+        <div key={r.id} className="sim-ef-row sim-fundplan-row">
+          <NumInput className="sim-mini-input" value={r.age} onChange={v => upd(r.id, { age: v })} />
+          <span className="sim-ef-unit">歳で</span>
+          {r.full
+            ? <span className="sim-ef-unit"><strong>残り全部（完済）</strong></span>
+            : <>
+                <NumInput className="sim-mini-input sim-mini-input--wide" value={r.amount} onChange={v => upd(r.id, { amount: v })} />
+                <span className="sim-ef-unit">円</span>
+              </>}
+          <select className="sim-mini-select" value={r.full ? 'full' : r.mode}
+            onChange={e => upd(r.id, e.target.value === 'full' ? { full: true } : { full: false, mode: e.target.value })}>
+            <option value="shorten">期間短縮</option>
+            <option value="reduce">返済額を減らす</option>
+            <option value="full">完済</option>
+          </select>
+          <button type="button" className="sim-row-del" onClick={() => onChange(rows.filter(x => x.id !== r.id))} aria-label="この行を消す">×</button>
+        </div>
+      ))}
+      <button type="button" className="sim-choice-btn" onClick={() => onChange([...rows, newPrepay(defaultAge)])}>＋ 繰上げ返済</button>
+      <span className="sim-ef-note">
+        {endAge != null && `ローンが終わる年齢：${endAge}歳${origEndAge != null && endAge !== origEndAge ? `（繰上げ返済なしなら${origEndAge}歳）` : ''}。`}
+        預金から払います（足りなければ保険・投信を崩す）。期間短縮は毎月の返済額のまま早く終わり、返済額を減らすは終わる年のまま毎月が軽くなります。
+        {deductEndAge != null && `住宅ローン控除の期間（${deductEndAge}歳まで）に返すと控除が減るので、控除が終わってからが有利です`}
+      </span>
     </div>
   )
 }
@@ -1358,8 +1436,13 @@ export default function SimTab() {
   const homeEff = useMemo(() => (homestLinked
     ? { ...home, landPrice: homestPlan.landPrice * 10_000, buildingPrice: homestPlan.buildingPrice * 10_000, downPayment: homestPlan.downPayment * 10_000,
         miscCost: homestPlan.miscCost != null ? homestPlan.miscCost * 10_000 : null,
-        gift: (Number(homestPlan.gift) || 0) * 10_000 }
+        gift: (Number(homestPlan.gift) || 0) * 10_000, buildExtra: (Number(homestPlan.buildExtra) || 0) * 10_000 }
     : home), [home, homestPlan, homestLinked])
+
+  // ローンの返済スケジュール（画面の表示用。繰上げ返済あり／なし）
+  const homeBuyAge     = params.currentAge + Number(homeEff.yearsFromNow)
+  const homeSched      = useMemo(() => loanSchedule({ ...homeEff, enabled: true }, params.currentAge), [homeEff, params.currentAge])
+  const homeOrigSched  = useMemo(() => loanSchedule({ ...homeEff, enabled: true, prepays: [] }, params.currentAge), [homeEff, params.currentAge])
 
   const events = useMemo(() => ({ child1, child2, car, dog, home: homeEff, ninkatsu, oneOffs }), [child1, child2, car, dog, homeEff, ninkatsu, oneOffs])
   const sim = useMemo(() => runSim(simParams, events), [simParams, events])
@@ -1394,10 +1477,9 @@ export default function SimTab() {
   // 退職後の住居費（今の物価・月額）。シミュレーションと同じく、マイホーム購入後は家賃を止めて維持費とローン返済を入れる
   const retireT          = retireAge - params.currentAge
   const homeOn           = homeEff.enabled && Number(homeEff.yearsFromNow) <= retireT
-  const homeLoanEndAge   = homeOn ? params.currentAge + Number(homeEff.yearsFromNow) + Number(homeEff.loanYears) : null
-  const homeLoanMonthly  = homeOn
-    ? annualLoanPayment(loanPrincipal(homeEff), homeEff.loanRate, Number(homeEff.loanYears)) / 12
-    : 0
+  // 繰上げ返済込みの返済スケジュールから：ローンのない最初の年齢と、退職した年の毎月の返済額
+  const homeLoanEndAge   = homeOn ? homeBuyAge + homeSched.length : null
+  const homeLoanMonthly  = homeOn ? (homeSched[retireAge - homeBuyAge]?.pay || 0) / 12 : 0
   const retireRent       = homeOn && homeEff.stopRent ? 0 : params.monthlyRent
   const retireHomeCost   = homeOn ? Number(homeEff.monthlyCost) : 0
   const retireLoan       = homeOn && homeLoanEndAge > retireAge ? homeLoanMonthly : 0
@@ -1966,6 +2048,11 @@ export default function SimTab() {
                   value={home.loanYears} onChange={v => setHome(p => ({ ...p, loanYears: v }))} />
                 <EventNumField label="ローン金利" unit="% / 年"
                   value={home.loanRate} onChange={v => setHome(p => ({ ...p, loanRate: v }))} />
+                <Prepays rows={home.prepays || []} onChange={rows => setHome(p => ({ ...p, prepays: rows }))}
+                  defaultAge={Math.max(params.retireAge, homeBuyAge + Number(home.deductYears ?? 13))}
+                  deductEndAge={Number(home.deductYears ?? 13) > 0 ? homeBuyAge + Number(home.deductYears ?? 13) - 1 : null}
+                  endAge={homeSched.length ? homeBuyAge + homeSched.length - 1 : null}
+                  origEndAge={homeOrigSched.length ? homeBuyAge + homeOrigSched.length - 1 : null} />
                 <p className="sim-ef-note">
                   固定資産税・都市計画税（自動計算）：1〜3年目 年{fmt(propertyTaxAt(homeEff, 0))} ／ 4年目 年{fmt(propertyTaxAt(homeEff, 3))} ／ 20年目 年{fmt(propertyTaxAt(homeEff, 19))}。
                   土地は価格の70%、建物は建築費の60%（毎年少しずつ下がる）を評価額とし、住宅用地の特例と新築3年間の減額を入れた目安
